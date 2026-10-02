@@ -86,7 +86,9 @@ final class SingeController {
 
         lookupID += 1
         let id = lookupID
-        let dark = NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        // The highlight is always dark glass with white text, on dark and white pages alike
+        // (pairings ② and ④ in mockups/highlight-contrast).
+        let dark = true
         let anchor: CGRect
         if let rect = sel.rect, rect.height < 60 {
             highlight.show(text: sel.text.trimmingCharacters(in: .whitespacesAndNewlines), over: rect, font: sel.font, dark: dark)

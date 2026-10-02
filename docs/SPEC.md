@@ -26,8 +26,8 @@ DORA text came back as "Religious Trauma Syndrome") and cannot be interacted wit
   Sorph hues 236°, 184°, 290° at saturation 0.40.
 - Opens with a small spring overshoot and a stir of the ribbons that settles in ~1 s.
 - The term is redrawn clean on top: no refraction, outline or halo on the letters.
-  White on dark glass, near-black on light glass, following the system appearance.
-  Ribbons run calmer behind a term (55 % dark, 80 % light).
+  Always dark glass with white text, on dark and white pages alike (chosen from the four
+  pairings in `mockups/highlight-contrast`). Ribbons run calmer behind a term (55 %).
 - Drawn in a click-through window; the original app is untouched. No Screen Recording
   permission is needed.
 

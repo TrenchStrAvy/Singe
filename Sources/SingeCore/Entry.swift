@@ -42,7 +42,8 @@ public func singeMain() -> Int32 {
     if let i = args.firstIndex(of: "--read-selection") {
         _ = NSApplication.shared
         let wait = i + 1 < args.count ? Double(args[i + 1]) ?? 2 : 2
-        Thread.sleep(forTimeInterval: wait)
+        // spin the run loop so NSWorkspace reports the real frontmost app (it is stale otherwise)
+        RunLoop.current.run(until: Date().addingTimeInterval(max(wait, 0.3)))
         if let sel = SelectionReader.read() {
             print("app: \(sel.appName)\ntext: \(sel.text)\nrect: \(sel.rect.map { "\($0)" } ?? "none")\nfont: \(sel.font?.fontName ?? "none")")
         } else {

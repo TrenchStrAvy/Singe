@@ -58,7 +58,7 @@ enum SelectionReader {
         if let el = focused, ProcessInfo.processInfo.environment["SINGE_FORCE_COPY"] == nil {
             if let sel = fromTextMarkers(el, appName: appName) {
                 singeLog.notice("selection via text markers in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
-                return sel
+                return verified(sel)
             }
             if let sel = fromRange(el, appName: appName) {
                 singeLog.notice("selection via AX range in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
@@ -70,7 +70,7 @@ enum SelectionReader {
                 guard let n = node, let parent: AXUIElement = attribute(n, kAXParentAttribute) else { break }
                 if let sel = fromTextMarkers(parent, appName: appName) {
                     singeLog.notice("selection via parent text markers in \(appName)")
-                    return sel
+                    return verified(sel)
                 }
                 node = parent
             }
@@ -81,7 +81,7 @@ enum SelectionReader {
             let web = window.flatMap(findWebArea)
             if let web, let sel = fromTextMarkers(web, appName: appName) {
                 singeLog.notice("selection via web area in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
-                return sel
+                return verified(sel)
             }
             singeLog.notice("web area search in \(appName): window \(window != nil), web area \(web != nil)")
         }
@@ -208,6 +208,26 @@ enum SelectionReader {
             queue.append(contentsOf: kids.map { ($0, depth + 1) })
         }
         return nil
+    }
+
+    /// Web pages can misreport their selection: text inside an aria-hidden section is missing
+    /// from the accessibility tree, so the browser reports the nearest accessible text instead
+    /// (on sorph.me, selecting "Get Sorph" reported the footer). When the reported selection
+    /// looks implausible (no position, a huge area, or far from the pointer you just selected
+    /// with), confirm it with a copy; if the two disagree, the copy is the truth.
+    private static func verified(_ sel: Selection) -> Selection {
+        let mouse = NSEvent.mouseLocation
+        var suspicious = true
+        if let r = sel.rect {
+            let dx = max(r.minX - mouse.x, 0, mouse.x - r.maxX)
+            let dy = max(r.minY - mouse.y, 0, mouse.y - r.maxY)
+            suspicious = r.height > 80 || hypot(dx, dy) > 240
+        }
+        guard suspicious, let copied = copySelection() else { return sel }
+        let a = TermIndex.normalize(copied), b = TermIndex.normalize(sel.text)
+        guard !a.isEmpty, a != b else { return sel }
+        singeLog.notice("selection reported by accessibility did not match the copy; using the copy (\(a.count) chars)")
+        return Selection(text: copied, rect: nil, font: nil, appName: sel.appName)
     }
 
     /// Marks Singe's own synthetic ⌘C so the hold monitor ignores it.

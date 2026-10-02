@@ -100,6 +100,7 @@ final class TermIndex {
             for n in stride(from: min(4, words.count - i), through: 1, by: -1) {
                 let piece = words[i..<(i + n)].joined(separator: " ")
                 if n == 1 && Self.phraseStopwords.contains(piece.lowercased()) { break }
+                if piece.rangeOfCharacter(from: .alphanumerics) == nil { break }   // "·", "–", "/"…
                 var senses = (glossary[piece.lowercased()] ?? []) + wiktionarySenses(piece)
                 if senses.isEmpty {
                     for stem in Self.stems(piece) {
@@ -124,7 +125,9 @@ final class TermIndex {
             }
             if !matched { i += 1 }
         }
-        return parts
+        // the same piece twice ("Sorph … Sorph") shows once
+        var seen = Set<String>()
+        return parts.filter { seen.insert($0.first?.term.lowercased() ?? "").inserted }
     }
 
     private func lookup(_ term: String) -> [Sense] {

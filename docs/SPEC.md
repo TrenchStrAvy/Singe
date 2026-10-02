@@ -62,8 +62,10 @@ first again. Slash-joined terms ("RTS/ITS") are looked up whole and per part.
 
 ## Platform
 Native Swift (AppKit + SwiftUI + Metal), macOS 13+, Intel and Apple Silicon (built on
-the machine). Needs Accessibility access. Ad-hoc signed; after an update the
-Accessibility switch has to be toggled again.
+the machine). Needs Accessibility access, granted once per Mac. `Singe.app` is a launcher
+that stays unchanged (it holds the permission) and loads `libSingeCore.dylib` from
+Application Support, which updates replace. A startup splash (title, caption, thin bar)
+shows loading progress, as in Sorph.
 
 ## Later
 - Follow-up questions (typed, or dictated with Sorph's Right-Option).

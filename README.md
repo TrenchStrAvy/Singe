@@ -23,10 +23,15 @@ the one command goes through the GitHub CLI (`gh auth login` once):
 zsh <(gh api -H "Accept: application/vnd.github.raw" repos/TrenchStrAvy/singe/contents/install.sh)
 ```
 
-Or from a clone: `./install.sh`. The installer builds the app (native Swift, about
-2 MB), downloads the term index (about 53 MB, 130 MB on disk), installs
-**Singe** in `/Applications`, and opens it. Then turn on Singe in
-**System Settings → Privacy & Security → Accessibility**.
+Or from a clone: `./install.sh`. The installer builds Singe (native Swift), downloads
+the term index (about 53 MB, 130 MB on disk), installs **Singe** in `/Applications`, and
+opens it. A splash shows the loading progress, like Sorph's.
+
+**Once per Mac:** turn on Singe in **System Settings → Privacy & Security → Accessibility**.
+macOS never lets an app grant itself this. Updates keep the permission: `Singe.app` is a
+tiny launcher that stays the same, and the app itself (`libSingeCore.dylib` in
+`~/Library/Application Support/Singe`) is what updates replace. On managed Macs, IT can
+pre-approve it with a PPPC device-management profile.
 
 | Flag | What it does |
 |---|---|
@@ -46,6 +51,14 @@ The glass-bar icon in the menu bar holds your **History** (by day, with the app 
 in), **Saved** terms, and **Lists**. A list has a colour, and the colour is its mark: right-click
 a term to put it in one or more lists. Sort by recent, A–Z or most looked up, search, and
 **Export to Obsidian** as Markdown.
+
+## Works in any app
+
+Singe reads the highlighted text through the Accessibility API: native text (TextEdit,
+Notes, Mail, Pages), web text markers (Safari, Chrome, Electron apps such as VS Code,
+Cursor, Obsidian, Slack), and, when an app exposes neither, a ⌘C copy from a private event
+source (so the Control key you are holding is not added) with your clipboard restored.
+`tools/test_apps.py` checks the whole flow in TextEdit, Safari, Chrome, VS Code and Cursor.
 
 ## How it finds meanings
 
@@ -72,6 +85,7 @@ same local `gemma3:4b` and the same ribbon glass.
 swift build -c release                    # the binary
 ./scripts/bundle.sh                       # build/Singe.app with its icon
 .build/release/Singe --lookup "RTS/ITS"   # try the lookup in the terminal
+.build/release/Singe --read-selection 2    # what Singe reads as the selection, after 2 s
 .build/release/Singe --snapshot out.png "RTS/ITS" --dark   # render highlight + popover
 ```
 

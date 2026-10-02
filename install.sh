@@ -10,7 +10,7 @@
 # What it does (all local; nothing you look up ever leaves the Mac):
 #   1. checks macOS 13+ and the Swift toolchain (Xcode Command Line Tools)
 #   2. fetches or updates the source in ~/.singe/src
-#   3. builds Singe.app (native Swift, ~2 MB) with its glass-bar icon
+#   3. builds Singe (native Swift): a small launcher app + the app library
 #   4. downloads the term index (Wiktionary, ~53 MB compressed, ~130 MB on disk)
 #   5. installs Singe in /Applications (or ~/Applications) and opens it
 #
@@ -73,7 +73,7 @@ ok "macOS $(sw_vers -productVersion), $(swift --version 2>/dev/null | head -1 | 
 
 # 2. source --------------------------------------------------------------------
 here=${0:A:h}
-if [[ -f "$here/Package.swift" && -d "$here/Sources/Singe" ]]; then
+if [[ -f "$here/Package.swift" && -d "$here/Sources/SingeLauncher" ]]; then
   root=$here                                    # run from a clone
 else
   mkdir -p "${src:h}"
@@ -140,22 +140,43 @@ else
 fi
 
 # 5. install -------------------------------------------------------------------
+# Singe.app is only a launcher; the app itself is libSingeCore.dylib in Application
+# Support. The launcher is replaced only when it actually changed, so macOS keeps the
+# Accessibility permission across updates.
 dest=/Applications
 [[ -w $dest ]] || { dest="$HOME/Applications"; mkdir -p "$dest"; }
+existing=$(installed_app || true)
+[[ -n $existing ]] && dest=${existing:h}
+new_hash=$(cat build/launcher.hash)
+old_hash=$(cat "$support/launcher.hash" 2>/dev/null || true)
 pkill -x Singe 2>/dev/null && sleep 0.5 || true
-rm -rf "$dest/Singe.app"
-cp -R build/Singe.app "$dest/Singe.app"
-xattr -cr "$dest/Singe.app" 2>/dev/null || true
-touch "$dest/Singe.app"                         # refresh the Dock / Finder icon
-/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-  -f "$dest/Singe.app" 2>/dev/null || true
+cp build/libSingeCore.dylib "$support/libSingeCore.dylib.new"
+mv -f "$support/libSingeCore.dylib.new" "$support/libSingeCore.dylib"
+cp VERSION "$support/version"
+regrant=false
+if [[ -n $existing && $new_hash == "$old_hash" ]]; then
+  ok "kept $dest/Singe.app (unchanged launcher: your Accessibility permission stays)"
+else
+  [[ -n $existing ]] && regrant=true
+  rm -rf "$dest/Singe.app"
+  cp -R build/Singe.app "$dest/Singe.app"
+  xattr -cr "$dest/Singe.app" 2>/dev/null || true
+  touch "$dest/Singe.app"                         # refresh the Dock / Finder icon
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+    -f "$dest/Singe.app" 2>/dev/null || true
+  print -n "$new_hash" > "$support/launcher.hash"
+  ok "installed $dest/Singe.app"
+fi
 open "$dest/Singe.app"
-ok "installed $dest/Singe.app and opened it"
+ok "Singe $(cat VERSION) is running"
 
 print
-print -P "%BNext:%b macOS asks for %BAccessibility%b access. Turn on %BSinge%b in"
-print    "  System Settings → Privacy & Security → Accessibility."
-print    "  (After an update, switch it off and on again: the new build has a new signature.)"
+if [[ -z $existing ]] || $regrant; then
+  print -P "%BOnce:%b macOS asks for %BAccessibility%b access. Turn on %BSinge%b in"
+  print    "  System Settings → Privacy & Security → Accessibility."
+  $regrant && print "  (The launcher changed in this update, so switch Singe off and on there once.)"
+  print    "  Future updates keep the permission."
+fi
 print
 print -P "%BUse:%b highlight a term anywhere, then hold %BLeft Control%b. Let go to close."
 print    "  Your history, saved terms and lists live under the glass-bar icon in the menu bar."

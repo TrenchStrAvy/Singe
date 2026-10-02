@@ -41,8 +41,10 @@ enum ListColor {
 /// ~/Library/Application Support/Singe.
 final class Store: ObservableObject {
     static let supportDir: URL = {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Singe", isDirectory: true)
+        // SINGE_HOME keeps test runs away from your real history
+        let dir = ProcessInfo.processInfo.environment["SINGE_HOME"].map { URL(fileURLWithPath: $0, isDirectory: true) }
+            ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("Singe", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
     }()

@@ -34,6 +34,8 @@ final class TermIndex {
         if let env = ProcessInfo.processInfo.environment["SINGE_INDEX"] { candidates.append(env) }
         if let res = Bundle.main.resourcePath { candidates.append(res + "/terms.sqlite") }
         candidates.append(Store.supportDir.appendingPathComponent("terms.sqlite").path)
+        candidates.append(FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Singe/terms.sqlite").path)
         candidates.append(fm.currentDirectoryPath + "/build/terms.sqlite")
         return candidates.first { fm.fileExists(atPath: $0) }
     }

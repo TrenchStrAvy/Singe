@@ -23,6 +23,7 @@ final class HoldKeyMonitor {
     private static let escape: Int64 = 53
 
     var isRunning: Bool { tap != nil }
+    var isHolding: Bool { leftControlDown }
 
     @discardableResult
     func start() -> Bool {
@@ -68,6 +69,7 @@ final class HoldKeyMonitor {
             }
 
         case .keyDown:
+            if event.getIntegerValueField(.eventSourceUserData) == SelectionReader.syntheticTag { break }
             let code = event.getIntegerValueField(.keyboardEventKeycode)
             if pending != nil { cancel() }                // ⌃ + key: a shortcut, not Singe
             if code == Self.escape, isOpen?() == true {
@@ -98,6 +100,7 @@ final class HoldKeyMonitor {
         let work = DispatchWorkItem { [weak self] in
             guard let self, self.leftControlDown else { return }
             self.pending = nil
+            singeLog.notice("Left Control held")
             self.onHold?()
         }
         pending = work

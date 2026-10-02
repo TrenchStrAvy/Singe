@@ -10,7 +10,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let menuPopover = NSPopover()
     private var trustTimer: Timer?
 
+    private let splash = SplashWindow()
+
     func applicationDidFinishLaunching(_ note: Notification) {
+        splash.present()
+        splash.stage("warming the glass…", 0.25)
         controller = SingeController(store: store)
         appState.onHoldDelay = { [weak self] in self?.controller.setHoldDelay($0) }
 
@@ -35,7 +39,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !controller.index.hasIndex {
             NSLog("Singe: term index not found; using the glossary, macOS Dictionary and the local model only")
         }
-        startWhenTrusted(prompt: true)
+        loadStages()
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                                                          object: nil, queue: nil) { note in
+            let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+            DispatchQueue.global(qos: .utility).async { SelectionReader.prepare(app) }
+        }
+        DispatchQueue.global(qos: .utility).async { SelectionReader.prepare(NSWorkspace.shared.frontmostApplication) }
+    }
+
+    /// The splash stages: real work, in order, then ready (or what is still missing).
+    private func loadStages() {
+        let index = controller.index
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            _ = GlassRenderer.shared.pipeline                       // compile the glass shader
+            DispatchQueue.main.async { self?.splash.stage("opening the term index…", 0.5) }
+            _ = index.candidates(for: "singe")                      // first query pages the index in
+            DispatchQueue.main.async { self?.splash.stage("checking the local model…", 0.75) }
+            let model = LocalModel.isAvailable()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.splash.stage("checking Accessibility…", 0.9)
+                self.startWhenTrusted(prompt: true)
+                let base = index.hasIndex ? "" : " (no term index)"
+                if self.appState.trusted {
+                    self.splash.finish("ready — highlight a term and hold Left ⌃" + base)
+                } else {
+                    self.splash.finish("turn on Singe in Settings → Accessibility" + base)
+                }
+                if model { LocalModel.warmUp() }
+            }
+        }
     }
 
     /// The Control-key listener needs Accessibility access. Ask once, then keep checking

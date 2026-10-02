@@ -60,10 +60,24 @@ final class SingeController {
 
     // MARK: open / close
 
+    private var reading = false
+
     func open() {
-        guard !isOpen else { return }
-        guard let sel = SelectionReader.read() else { return }       // nothing highlighted: do nothing
-        open(sel)
+        guard !isOpen, !reading else { return }
+        reading = true
+        let id = lookupID
+        // Accessibility calls can take a moment in some apps; keep them off the main
+        // thread so the Control-key listener never stalls.
+        DispatchQueue.global(qos: .userInteractive).async { [weak self] in
+            let sel = SelectionReader.read()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.reading = false
+                // released before the selection was read: stay closed
+                guard let sel, id == self.lookupID, self.monitor.isHolding else { return }
+                self.open(sel)
+            }
+        }
     }
 
     func open(_ sel: Selection) {

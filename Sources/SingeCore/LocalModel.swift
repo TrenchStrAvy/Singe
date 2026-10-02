@@ -7,6 +7,29 @@ enum LocalModel {
     static let model = UserDefaults.standard.string(forKey: "ollamaModel") ?? "gemma3:4b"
     static let endpoint = URL(string: "http://127.0.0.1:11434/api/generate")!
 
+    /// Is Ollama running with the model pulled? Quick check, never blocks for long.
+    static func isAvailable() -> Bool {
+        var req = URLRequest(url: URL(string: "http://127.0.0.1:11434/api/tags")!, timeoutInterval: 1)
+        req.httpMethod = "GET"
+        let sem = DispatchSemaphore(value: 0)
+        var ok = false
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            if let data, let s = String(data: data, encoding: .utf8) { ok = s.contains("\"\(model)\"") || s.contains(model) }
+            sem.signal()
+        }.resume()
+        _ = sem.wait(timeout: .now() + 1.5)
+        return ok
+    }
+
+    /// Loads the model into memory in the background so the first fallback answer is quick.
+    static func warmUp() {
+        var req = URLRequest(url: endpoint, timeoutInterval: 120)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["model": model, "keep_alive": "30m"])
+        URLSession.shared.dataTask(with: req).resume()
+    }
+
     static func meanings(for term: String, profileHint: [String]) async -> [Sense] {
         let hint = profileHint.isEmpty ? "" :
             " The reader often looks up terms about: \(profileHint.prefix(6).joined(separator: ", ")). List the meaning in that field first if one exists."

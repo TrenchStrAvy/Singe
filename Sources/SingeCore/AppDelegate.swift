@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let splash = SplashWindow()
 
     func applicationDidFinishLaunching(_ note: Notification) {
+        installMainMenu()
         splash.present()
         splash.stage("warming the glass…", 0.25)
         controller = SingeController(store: store)
@@ -66,6 +67,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self.splash.finish("ready — highlight a term and hold Left ⌃" + base)
                 } else {
                     self.splash.finish("turn on Singe in Settings → Accessibility" + base)
+                    // take you straight to the switch
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
+                    }
                 }
                 if model { LocalModel.warmUp() }
             }
@@ -78,7 +83,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: prompt] as CFDictionary
         let trusted = AXIsProcessTrustedWithOptions(opts)
         appState.trusted = trusted
-        if trusted && controller.monitor.start() {
+        let listening = trusted && controller.monitor.start()
+        writeStatus(trusted: trusted, listening: listening)
+        if listening {
             trustTimer?.invalidate()
             trustTimer = nil
             return
@@ -88,6 +95,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.startWhenTrusted(prompt: false)
             }
         }
+    }
+
+    /// A small status file for troubleshooting: ~/Library/Application Support/Singe/status.json
+    private func writeStatus(trusted: Bool, listening: Bool) {
+        let status: [String: Any] = [
+            "version": (try? String(contentsOf: Store.supportDir.appendingPathComponent("version"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)) ?? "dev",
+            "pid": ProcessInfo.processInfo.processIdentifier,
+            "accessibility": trusted,
+            "listening": listening,
+            "termIndex": controller.index.hasIndex,
+            "updated": ISO8601DateFormatter().string(from: Date()),
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: status, options: [.prettyPrinted, .sortedKeys]) {
+            try? data.write(to: Store.supportDir.appendingPathComponent("status.json"))
+        }
+    }
+
+    // MARK: Dock
+
+    /// Clicking the Dock icon opens the History panel.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !menuPopover.isShown { toggleMenu() }
+        return false
+    }
+
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "History & Lists", action: #selector(toggleMenu), keyEquivalent: "").target = self
+        return menu
+    }
+
+    private func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        main.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "History & Lists", action: #selector(toggleMenu), keyEquivalent: "").target = self
+        appMenu.addItem(.separator())
+        appMenu.addItem(withTitle: "Hide Singe", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
+        appMenu.addItem(withTitle: "Quit Singe", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        NSApp.mainMenu = main
     }
 
     @objc private func toggleMenu() {

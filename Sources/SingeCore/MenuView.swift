@@ -62,7 +62,7 @@ struct MenuView: View {
     private var permissionBanner: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Singe needs Accessibility access").font(.system(size: 13, weight: .semibold))
-            Text("It reads the text you highlight and listens for the Control key. Turn on Singe in Privacy & Security → Accessibility.")
+            Text("It reads the text you highlight and listens for the Control key. Turn on Singe in Privacy & Security → Accessibility. If Singe is already listed and on but this message stays, select it, remove it with −, and add /Applications/Singe.app again with +.")
                 .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             Button("Open Accessibility Settings") {
                 NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)

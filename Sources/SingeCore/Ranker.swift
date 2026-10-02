@@ -24,7 +24,8 @@ enum Ranker {
 
     static func rank(_ senses: [Sense], profile: [String: Double]) -> [Sense] {
         let scored = senses.enumerated().map { i, s -> (Sense, Double) in
-            let prior = 1.0 / (1.0 + 0.35 * Double(i))
+            // the curated glossary keeps a small edge: it exists for the professional reading
+            let prior = 1.0 / (1.0 + 0.35 * Double(i)) + (s.source == .glossary ? 0.35 : 0)
             let toks = Set(tokens(of: s))
             var affinity = 0.0
             for t in toks { affinity += log1p(profile[t] ?? 0) }

@@ -48,16 +48,20 @@ final class HighlightWindow: NSPanel {
 
         // Redraw the term in its own font if we know it, sized to sit inside the bar.
         var f = font ?? NSFont.systemFont(ofSize: max(10, min(40, rect.height / 1.25)), weight: .semibold)
-        let maxWidth = bar.width - 4
+        // as wide as the word was on the page, never wider than the bar (the label adds ~4 pt)
+        let maxWidth = min(rect.width + 2, bar.width - 10)
         var attrs: [NSAttributedString.Key: Any] = [.font: f]
         while (text as NSString).size(withAttributes: attrs).width > maxWidth && f.pointSize > 8 {
             f = NSFont(descriptor: f.fontDescriptor, size: f.pointSize - 0.5) ?? f
             attrs[.font] = f
         }
         let ink = dark ? NSColor(white: 0.985, alpha: 1) : NSColor(srgbRed: 0.06, green: 0.065, blue: 0.09, alpha: 1)
-        label.attributedStringValue = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: ink])
+        let centred = NSMutableParagraphStyle()
+        centred.alignment = .center
+        label.attributedStringValue = NSAttributedString(string: text, attributes: [.font: f, .foregroundColor: ink,
+                                                                                     .paragraphStyle: centred])
         label.sizeToFit()
-        label.frame = CGRect(x: bar.minX, y: bar.midY - label.frame.height / 2, width: bar.width, height: label.frame.height)
+        label.frame = CGRect(x: bar.minX - 4, y: bar.midY - label.frame.height / 2, width: bar.width + 8, height: label.frame.height)
 
         alphaValue = 0
         orderFrontRegardless()

@@ -1,6 +1,5 @@
 import AppKit
 import Metal
-import MetalKit
 import QuartzCore
 
 /// Sorph's ribbon hues (degrees), at the saturation the mock-up settled on.
@@ -90,7 +89,7 @@ final class GlassRenderer {
 
     /// Renders one frame offscreen: used for the app icon and the menu bar icon.
     func image(pixelSize: CGSize, scale: CGFloat, t: Double, dark: Bool, radius: CGFloat,
-               calm: Float = 1, pulse: Double = 0) -> CGImage? {
+               calm: Float = 1, pulse: Double = 0, flow: Double? = nil) -> CGImage? {
         guard let device, let queue, pipeline != nil else { return nil }
         let w = Int(pixelSize.width), h = Int(pixelSize.height)
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
@@ -104,7 +103,7 @@ final class GlassRenderer {
         pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
         pass.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return nil }
-        encode(enc, uniforms: Self.uniforms(size: pixelSize, scale: scale, t: t, flow: t * 0.9, dark: dark,
+        encode(enc, uniforms: Self.uniforms(size: pixelSize, scale: scale, t: t, flow: flow ?? t * 0.9, dark: dark,
                                             pulse: pulse, radius: radius, calm: calm))
         enc.endEncoding()
         if let blit = cmd.makeBlitCommandEncoder() { blit.synchronize(resource: tex); blit.endEncoding() }
@@ -120,8 +119,10 @@ final class GlassRenderer {
     }
 }
 
-/// A live glass bar. Animates only while it is on screen.
-final class GlassView: MTKView, MTKViewDelegate {
+/// A live glass bar. Each frame is rendered offscreen by the shared Metal pipeline and
+/// shown as the layer's image: the same path as the icon and the snapshot check, which
+/// works in every window (an MTKView inside the click-through overlay stayed invisible).
+final class GlassView: NSView {
     var dark = true
     var calm: Float = 1
     var radius: CGFloat = 8
@@ -129,51 +130,72 @@ final class GlassView: MTKView, MTKViewDelegate {
     private var flow = Double.random(in: 0...20)
     private let phase = Double.random(in: 0...20)
     private var last = CACurrentMediaTime()
+    private var timer: Timer?
+    private(set) var drawCount = 0
+    private let imageLayer = CALayer()
 
-    init(frame: CGRect) {
-        super.init(frame: frame, device: GlassRenderer.shared.device)
-        colorPixelFormat = .bgra8Unorm
-        clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        wantsLayer = true
         layer?.isOpaque = false
-        preferredFramesPerSecond = 60
-        delegate = self
-        isPaused = true
-        enableSetNeedsDisplay = false
+        imageLayer.contentsGravity = .resize
+        imageLayer.isOpaque = false
+        layer?.addSublayer(imageLayer)
     }
 
-    required init(coder: NSCoder) { fatalError("not used") }
+    override func layout() {
+        super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.frame = bounds
+        CATransaction.commit()
+    }
+
+    override var frame: NSRect {
+        didSet { imageLayer.frame = bounds }
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    var isAnimating: Bool { timer != nil }
 
     /// The stir of opening: ribbons speed up and swell, then settle over about a second.
     func stir() {
         pulse = 1
         last = CACurrentMediaTime()
-        isPaused = false
+        render()
+        guard timer == nil else { return }
+        let t = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in self?.render() }
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
     }
 
-    func stop() { isPaused = true }
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
 
-    func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
-
-    private(set) var drawCount = 0
-    private(set) var encodedCount = 0
-
-    func draw(in view: MTKView) {
-        drawCount += 1
+    private func render() {
         let now = CACurrentMediaTime()
         let dt = min(0.05, now - last)
         last = now
         pulse *= pow(0.18, dt)
         flow += dt * (0.9 + 2.2 * pulse)           // integrated like Sorph: speed changes, phase never jumps
-        guard let pass = currentRenderPassDescriptor, let drawable = currentDrawable,
-              let cmd = GlassRenderer.shared.queue?.makeCommandBuffer(),
-              let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return }
-        let scale = window?.backingScaleFactor ?? 2
-        GlassRenderer.shared.encode(enc, uniforms: GlassRenderer.uniforms(
-            size: drawableSize, scale: scale, t: now + phase, flow: flow + phase, dark: dark,
-            pulse: pulse, radius: radius, calm: calm))
-        encodedCount += 1
-        enc.endEncoding()
-        cmd.present(drawable)
-        cmd.commit()
+        let scale = window?.backingScaleFactor ?? NSScreen.main?.backingScaleFactor ?? 2
+        let px = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
+        guard px.width >= 2, px.height >= 2,
+              let image = GlassRenderer.shared.image(pixelSize: px, scale: scale, t: now + phase, dark: dark,
+                                                     radius: radius, calm: calm, pulse: pulse, flow: flow + phase)
+        else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        imageLayer.frame = bounds
+        imageLayer.contents = image
+        imageLayer.contentsScale = scale
+        CATransaction.commit()
+        drawCount += 1
     }
+
+    /// The image currently shown (for `Singe --demo`).
+    var currentImage: CGImage? { (imageLayer.contents as AnyObject?).map { $0 as! CGImage } }
 }

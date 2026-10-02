@@ -59,7 +59,9 @@ public func singeMain() -> Int32 {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let controller = SingeController(store: Store(path: NSTemporaryDirectory() + "singe-demo.sqlite"))
-        let rect = CGRect(x: 600, y: 400, width: 70, height: 22)
+        let word = args[i + 1] as NSString
+    let w = word.size(withAttributes: [.font: NSFont.systemFont(ofSize: 18)]).width
+    let rect = CGRect(x: 600, y: 400, width: ceil(w), height: 22)    // like a word on a page
         DispatchQueue.main.async {
             controller.open(Selection(text: args[i + 1], rect: rect, font: nil, appName: "Demo"))
             print("t=0.0 popover \(controller.popover.frame.size)")
@@ -68,8 +70,19 @@ public func singeMain() -> Int32 {
             let m = controller.popover.model
             print("t=1.5 popover \(controller.popover.frame.size), senses \(m.senses.count), loading \(m.loading)")
         let g = controller.highlight.glass
-        print("glass: visible \(controller.highlight.isVisible), frame \(g.frame), drawable \(g.drawableSize), paused \(g.isPaused), draws \(g.drawCount), encoded \(g.encodedCount), pipeline \(GlassRenderer.shared.pipeline != nil), layer opaque \(g.layer?.isOpaque ?? true)")
-            if let rep = controller.popover.contentSnapshot() {
+        var center = "none"
+        if let img = g.currentImage, let data = img.dataProvider?.data, let p = CFDataGetBytePtr(data) {
+            let o = (img.height / 2) * img.bytesPerRow + (img.width / 2) * 4
+            center = "rgba \(p[o + 2]) \(p[o + 1]) \(p[o]) \(p[o + 3])"
+        }
+        print("glass: window visible \(controller.highlight.isVisible), alpha \(controller.highlight.alphaValue), frame \(g.frame), frames \(g.drawCount), image \(g.currentImage.map { "\($0.width)x\($0.height)" } ?? "none"), centre pixel \(center)")
+        // what is really on screen: an app may capture its own windows without Screen Recording
+        let wid = CGWindowID(controller.highlight.windowNumber)
+        if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, wid, [.boundsIgnoreFraming, .bestResolution]) {
+            _ = Icons.writePNG(shot, to: "/tmp/singe-glass.png")
+            print("window capture: \(shot.width)x\(shot.height) → /tmp/singe-glass.png")
+        }
+        if let rep = controller.popover.contentSnapshot() {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "/tmp/singe-demo.png"))
             }
             exit(0)

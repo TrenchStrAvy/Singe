@@ -107,6 +107,16 @@ final class Store: ObservableObject {
         refresh()
     }
 
+    /// What you were shown last time for this term (used when no index knows it, e.g. a
+    /// local-model explanation of "Hyper-V"), so it comes back instantly.
+    func remembered(_ term: String) -> Sense? {
+        guard let r = db.query("SELECT meaning, gloss, label FROM terms WHERE key = ?", [term.lowercased()]).first,
+              let meaning = r["meaning"] as? String, let gloss = r["gloss"] as? String, !gloss.isEmpty else { return nil }
+        let label = r["label"] as? String ?? ""
+        return Sense(id: "h:\(term.lowercased())", term: term, name: meaning, gloss: gloss,
+                     label: label.isEmpty ? "From your history" : label, topics: "", rank: 0, source: .model)
+    }
+
     func chosenMeaning(for term: String) -> String? {
         db.query("SELECT meaning FROM terms WHERE key = ?", [term.lowercased()]).first?["meaning"] as? String
     }

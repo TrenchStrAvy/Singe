@@ -22,7 +22,8 @@ enum Ranker {
         "kind", "type", "form", "number", "group", "place", "point", "process", "system", "systems",
         "used", "uses", "able", "known", "called", "term", "terms", "word", "words", "meaning", "sense",
         "general", "specific", "small", "large", "high", "low", "long", "short", "whole", "each", "every",
-        "natural", "sciences", "science", "one's", "oneself", "itself", "themselves", "upon", "via", "per", "etc", "e.g", "i.e",
+        "natural", "sciences", "science", "surname", "surnames", "given", "name", "names", "female", "male",
+        "city", "town", "village", "place", "placename", "county", "one's", "oneself", "itself", "themselves", "upon", "via", "per", "etc", "e.g", "i.e",
     ]
 
     static func tokens(_ text: String) -> [String] {
@@ -45,6 +46,8 @@ enum Ranker {
             var prior = 1.0 / (1.0 + 0.35 * Double(i)) + (s.source == .glossary ? 0.35 : 0)
             if let q = query, q.contains(where: { "/,;&+".contains($0) }),
                s.term.caseInsensitiveCompare(q) == .orderedSame { prior += 1.0 }
+            // a lowercase selection is rarely a proper name ("running", not the surname)
+            if let q = query, q.first?.isLowercase == true, s.pos == "name" { prior -= 0.8 }
             let toks = Set(tokens(of: s))
             var affinity = 0.0
             for t in toks { affinity += log1p(profile[t] ?? 0) }

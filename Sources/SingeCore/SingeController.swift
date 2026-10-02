@@ -115,12 +115,17 @@ final class SingeController {
             guard let self else { return }
             let multiWord = text.contains(" ")
             let exact = !multiWord || self.index.knowsWhole(text)
-            let found = self.index.candidates(for: text, profile: profile)
+            var found = self.index.candidates(for: text, profile: profile)
+            var fromHistory = false
+            if found.isEmpty, let known = self.store.remembered(text) {
+                found = [known]                    // explained before: instant, no model call
+                fromHistory = true
+            }
             // a phrase built from its parts keeps the parts in reading order
             let ranked = exact ? Ranker.rank(found, profile: profile, query: text) : found
             DispatchQueue.main.async {
                 guard id == self.lookupID else { return }
-                let needsModel = ranked.isEmpty || !exact
+                let needsModel = (ranked.isEmpty || !exact) && !fromHistory
                 if !ranked.isEmpty {
                     self.show(Array(ranked.prefix(3)), for: text, app: sel.appName, interests: Array(recent))
                 } else {

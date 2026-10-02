@@ -11,6 +11,7 @@ struct Sense: Identifiable, Hashable {
     let topics: String
     let rank: Int             // position in its source
     let source: Source
+    var pos: String = ""      // Wiktionary part of speech ("name" for proper names)
 
     enum Source: String { case glossary, wiktionary, dictionary, model }
 }
@@ -100,9 +101,11 @@ final class TermIndex {
                 let piece = words[i..<(i + n)].joined(separator: " ")
                 if n == 1 && Self.phraseStopwords.contains(piece.lowercased()) { break }
                 var senses = (glossary[piece.lowercased()] ?? []) + wiktionarySenses(piece)
-                if senses.isEmpty, piece.lowercased().hasSuffix("s"), piece.count > 3 {
-                    let singular = String(piece.dropLast())
-                    senses = (glossary[singular.lowercased()] ?? []) + wiktionarySenses(singular)
+                if senses.isEmpty {
+                    for stem in Self.stems(piece) {
+                        senses = (glossary[stem.lowercased()] ?? []) + wiktionarySenses(stem)
+                        if !senses.isEmpty { break }
+                    }
                 }
                 if senses.isEmpty, n == 1 {
                     // "third-party" unknown? try its halves; then the macOS dictionary
@@ -127,9 +130,14 @@ final class TermIndex {
     private func lookup(_ term: String) -> [Sense] {
         var out = glossary[term.lowercased()] ?? []
         out += wiktionarySenses(term)
-        if out.isEmpty, term.lowercased().hasSuffix("s"), term.count > 3 {
-            let singular = String(term.dropLast())
-            out = (glossary[singular.lowercased()] ?? []) + wiktionarySenses(singular)
+        // "walked" only matches the surname "Walked": the verb lives under "walk"
+        let onlyNames = !out.isEmpty && term.first?.isLowercase == true
+            && out.allSatisfy { $0.pos == "name" && $0.term != term }
+        if out.isEmpty || onlyNames {
+            for stem in Self.stems(term) {
+                let base = (glossary[stem.lowercased()] ?? []) + wiktionarySenses(stem).filter { $0.pos != "name" }
+                if !base.isEmpty { out = base + out; break }
+            }
         }
         if out.isEmpty, let d = dictionarySense(term) { out = [d] }
         return out
@@ -142,9 +150,16 @@ final class TermIndex {
             WHERE term = ? ORDER BY rank LIMIT 24
             """, [term.lowercased()])
         // Prefer the exact capitalisation the user selected ("ITS" before "its").
+        // and, for a lowercase selection, ordinary senses before proper names ("running", not "Running")
+        let lower = term.first?.isLowercase == true
         let sorted = rows.enumerated().sorted { a, b in
             let ea = (a.element["word"] as? String) == term, eb = (b.element["word"] as? String) == term
-            return ea != eb ? ea : a.offset < b.offset
+            if ea != eb { return ea }
+            if lower {
+                let na = (a.element["pos"] as? String) == "name", nb = (b.element["pos"] as? String) == "name"
+                if na != nb { return nb }
+            }
+            return a.offset < b.offset
         }.map(\.element)
         return sorted.enumerated().map { i, row in
             let word = row["word"] as? String ?? term
@@ -161,7 +176,7 @@ final class TermIndex {
             let label = topics.split(separator: ",").first.map { String($0).trimmingCharacters(in: .whitespaces).capitalized }
                 ?? Self.posLabel(pos)
             return Sense(id: "w:\(word):\(row["rank"] as? Int ?? i)", term: word, name: name, gloss: gloss,
-                         label: label, topics: topics, rank: i, source: .wiktionary)
+                         label: label, topics: topics, rank: i, source: .wiktionary, pos: pos)
         }
     }
 
@@ -169,12 +184,50 @@ final class TermIndex {
     private func dictionarySense(_ term: String) -> Sense? {
         let range = CFRange(location: 0, length: (term as NSString).length)
         guard let def = DCSCopyTextDefinition(nil, term as CFString, range)?.takeRetainedValue() as String? else { return nil }
-        var text = def.replacingOccurrences(of: "\n", with: " ")
-        if let bar = text.range(of: "|") { text = String(text[bar.upperBound...]) }
+        // The dictionary answers with the nearest headword ("hand" for "hand-on"): only accept
+        // the word itself or a simple inflection of it.
+        let parts = def.components(separatedBy: "|")
+        let head = parts[0].trimmingCharacters(in: .whitespaces).lowercased()
+            .components(separatedBy: CharacterSet.letters.union(CharacterSet(charactersIn: "-' ")).inverted).joined()
+        let t = term.lowercased()
+        guard head == t || (t.hasPrefix(head) && t.count - head.count <= 3 && !t.dropFirst(head.count).contains("-"))
+        else { return nil }
+        // keep the first definition: after the part of speech, up to the example or next sense
+        var text = parts.count > 1 ? parts[1...].joined(separator: "|") : def
+        text = text.replacingOccurrences(of: "\n", with: " ")
+        if let r = text.range(of: #"^\s*[a-z ]+?\s+(1\s+)?"#, options: .regularExpression) { text.removeSubrange(r) }
+        for stop in [":", " | ", " 2 ", " • "] {
+            if let r = text.range(of: stop) { text = String(text[..<r.lowerBound]) }
+        }
         text = text.trimmingCharacters(in: .whitespaces)
-        if text.count > 260 { text = String(text.prefix(259)) + "…" }
+        guard text.count > 3 else { return nil }
+        if text.count > 240 { text = String(text.prefix(239)) + "…" }
+        text = text.prefix(1).uppercased() + text.dropFirst()
+        if !text.hasSuffix(".") && !text.hasSuffix("…") { text += "." }
         return Sense(id: "d:\(term)", term: term, name: term, gloss: text, label: "Dictionary",
                      topics: "", rank: 0, source: .dictionary)
+    }
+
+    /// Likely base forms of an inflected word: studies → study, walked → walk, running → run.
+    static func stems(_ word: String) -> [String] {
+        let w = word
+        guard w.count > 3, !w.contains(" ") else { return [] }
+        var out: [String] = []
+        func drop(_ n: Int) -> String { String(w.dropLast(n)) }
+        let l = w.lowercased()
+        if l.hasSuffix("ies") { out.append(drop(3) + "y") }
+        if l.hasSuffix("es") { out.append(drop(2)) }
+        if l.hasSuffix("s") && !l.hasSuffix("ss") { out.append(drop(1)) }
+        if l.hasSuffix("ied") { out.append(drop(3) + "y") }
+        if l.hasSuffix("ed") { out += [drop(2), drop(1)] }
+        if l.hasSuffix("ing") && w.count > 5 { out += [drop(3), drop(3) + "e"] }
+        // doubled consonant: running → run, stopped → stop
+        for suffix in ["ing", "ed"] where l.hasSuffix(suffix) {
+            let base = drop(suffix.count)
+            if base.count > 2, let a = base.last, let b = base.dropLast().last, a == b { out.append(String(base.dropLast())) }
+        }
+        if l.hasSuffix("ly") && w.count > 5 { out.append(drop(2)) }
+        return out.filter { $0.count >= 2 }
     }
 
     static func normalize(_ s: String) -> String {
@@ -185,6 +238,7 @@ final class TermIndex {
     /// "Transmission Control Protocol/Internet Protocol, a standard for …" → the part before the comma.
     static func short(_ expansion: String) -> String {
         var e = expansion
+        if e.count > 40, let colon = e.range(of: ": ") { e = String(e[..<colon.lowerBound]) }
         if e.count > 48, let comma = e.range(of: ", ") { e = String(e[..<comma.lowerBound]) }
         if e.count > 64, let paren = e.range(of: " (") { e = String(e[..<paren.lowerBound]) }
         return e

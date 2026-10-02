@@ -64,8 +64,9 @@ first again. Slash-joined terms ("RTS/ITS") are looked up whole and per part.
 Native Swift (AppKit + SwiftUI + Metal), macOS 13+, Intel and Apple Silicon (built on
 the machine). Needs Accessibility access, granted once per Mac. `Singe.app` is a launcher
 that stays unchanged (it holds the permission) and loads `libSingeCore.dylib` from
-Application Support, which updates replace. A startup splash (title, caption, thin bar)
-shows loading progress, as in Sorph.
+Application Support, which updates replace. A startup card shows loading progress: white, rounded like a macOS window ("About This
+Mac" style), 410 × 202 pt, the live glass bar on top, name, caption and progress bar in
+black. Sorph uses the same card with its orb.
 
 ## Later
 - Follow-up questions (typed, or dictated with Sorph's Right-Option).

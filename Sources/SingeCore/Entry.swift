@@ -57,6 +57,26 @@ public func singeMain() -> Int32 {
         exit(0)
     }
 
+    // Singe --splash-demo: show the startup card and capture it to /tmp/singe-splash.png
+    if args.contains("--splash-demo") {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let splash = SplashWindow()
+        DispatchQueue.main.async {
+            splash.present()
+            splash.stage("opening the term index…", 0.55)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            let wid = CGWindowID(splash.windowNumber)
+            if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, wid, [.boundsIgnoreFraming, .bestResolution]) {
+                _ = Icons.writePNG(shot, to: "/tmp/singe-splash.png")
+                print("splash capture: \(shot.width)x\(shot.height)")
+            }
+            exit(0)
+        }
+        app.run()
+    }
+
     // Singe --demo "TERM": open the real highlight + popover over a fixed spot, then report
     // the popover's size and save its content to /tmp/singe-demo.png.
     if let i = args.firstIndex(of: "--demo"), i + 1 < args.count {

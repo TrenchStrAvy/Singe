@@ -40,6 +40,12 @@ enum Snapshot {
 
         // the line of text with the glass bar over the term
         let barRect = CGRect(x: (W - bar.width) / 2, y: 40, width: bar.width, height: bar.height)
+        // what the app shows underneath: its blue selection and the word, slightly offset
+        let under = CGRect(x: barRect.midX - textSize.width / 2 - 2, y: barRect.midY - textSize.height / 2 - 1,
+                           width: textSize.width + 4, height: textSize.height + 2)
+        NSColor(srgbRed: 0.70, green: 0.84, blue: 1, alpha: 1).setFill(); under.fill()
+        (term as NSString).draw(at: CGPoint(x: under.minX + 5, y: under.minY + 2),
+                                withAttributes: [.font: NSFont.systemFont(ofSize: 21), .foregroundColor: NSColor.black])
         if let glass = GlassRenderer.shared.image(pixelSize: CGSize(width: bar.width * scale, height: bar.height * scale),
                                                   scale: scale, t: 5.2, dark: dark, radius: min(9, bar.height * 0.3),
                                                   calm: dark ? 0.55 : 0.8) {

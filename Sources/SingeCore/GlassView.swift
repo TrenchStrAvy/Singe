@@ -154,7 +154,11 @@ final class GlassView: MTKView, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    private(set) var drawCount = 0
+    private(set) var encodedCount = 0
+
     func draw(in view: MTKView) {
+        drawCount += 1
         let now = CACurrentMediaTime()
         let dt = min(0.05, now - last)
         last = now
@@ -167,6 +171,7 @@ final class GlassView: MTKView, MTKViewDelegate {
         GlassRenderer.shared.encode(enc, uniforms: GlassRenderer.uniforms(
             size: drawableSize, scale: scale, t: now + phase, flow: flow + phase, dark: dark,
             pulse: pulse, radius: radius, calm: calm))
+        encodedCount += 1
         enc.endEncoding()
         cmd.present(drawable)
         cmd.commit()

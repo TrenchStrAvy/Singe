@@ -106,15 +106,18 @@ enum GlassShader {
             col = float3(0.025, 0.028, 0.05) + inner + rimCol * fres * 0.75 + float3(spec);
             col += float3(0.04, 0.045, 0.06) * smoothstep(0.55, 1.0, frag.y / u.res.y);
             col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);   // ACES, as in Sorph
-            alpha = 0.62 + fres * 0.35 + dot(inner, float3(0.3));
+            // solid enough to hide the original word and the app's own selection beneath
+            alpha = 0.97;
         } else {
-            float a = clamp(dot(inner, float3(0.42)), 0.0, 1.0);
+            float a = clamp(dot(inner, float3(0.5)), 0.0, 1.0);
             float3 hue = inner / (max(max(inner.r, inner.g), inner.b) + 1e-3);
-            hue = clamp(mix(float3(dot(hue, float3(0.333))), hue, 2.2), 0.0, 1.0);
-            col = mix(float3(0.975, 0.98, 0.995), hue * 0.74, a * 0.8);
-            col = mix(col, rimCol * 0.45, fres * 0.7) + float3(spec * 0.9);
-            col *= 1.0 - 0.18 * smoothstep(1.6 * dpr, 0.0, e);
-            alpha = 0.74 + fres * 0.24;
+            hue = clamp(mix(float3(dot(hue, float3(0.333))), hue, 2.4), 0.0, 1.0);
+            // a pale lavender body so the bar reads on white pages
+            float3 body = mix(float3(0.90, 0.91, 0.96), float3(0.96, 0.965, 0.985), smoothstep(0.0, 1.0, frag.y / u.res.y));
+            col = mix(body, hue * 0.70, a * 0.85);
+            col = mix(col, rimCol * 0.40, fres * 0.8) + float3(spec * 0.9);
+            col *= 1.0 - 0.30 * smoothstep(1.6 * dpr, 0.0, e);   // a visible edge line
+            alpha = 0.98;
         }
         col = clamp(col, 0.0, 1.0);
         alpha = clamp(alpha, 0.0, 1.0) * cover;

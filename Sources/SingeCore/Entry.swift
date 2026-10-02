@@ -67,6 +67,8 @@ public func singeMain() -> Int32 {
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
             let m = controller.popover.model
             print("t=1.5 popover \(controller.popover.frame.size), senses \(m.senses.count), loading \(m.loading)")
+        let g = controller.highlight.glass
+        print("glass: visible \(controller.highlight.isVisible), frame \(g.frame), drawable \(g.drawableSize), paused \(g.isPaused), draws \(g.drawCount), encoded \(g.encodedCount), pipeline \(GlassRenderer.shared.pipeline != nil), layer opaque \(g.layer?.isOpaque ?? true)")
             if let rep = controller.popover.contentSnapshot() {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "/tmp/singe-demo.png"))
             }

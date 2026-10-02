@@ -7,7 +7,7 @@ final class SingeController {
     let store: Store
     let index = TermIndex()
     let monitor = HoldKeyMonitor()
-    private let highlight = HighlightWindow()
+    let highlight = HighlightWindow()
     let popover = PopoverWindow()
     private var lookupID = 0
     private var bag: Set<AnyCancellable> = []

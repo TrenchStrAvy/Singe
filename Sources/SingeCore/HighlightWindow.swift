@@ -7,7 +7,7 @@ final class HighlightWindow: NSPanel {
     static let padX: CGFloat = 9
     static let padY: CGFloat = 3
 
-    private let glass = GlassView(frame: .zero)
+    let glass = GlassView(frame: .zero)
     private let label = NSTextField(labelWithString: "")
     private let container = NSView()
 

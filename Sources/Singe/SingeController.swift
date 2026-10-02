@@ -8,7 +8,7 @@ final class SingeController {
     let index = TermIndex()
     let monitor = HoldKeyMonitor()
     private let highlight = HighlightWindow()
-    private let popover = PopoverWindow()
+    let popover = PopoverWindow()
     private var lookupID = 0
     private var bag: Set<AnyCancellable> = []
 
@@ -25,9 +25,12 @@ final class SingeController {
             model.pinned = true
             DispatchQueue.main.async { self?.popover.relayout() }
         }
-        model.$senses.combineLatest(model.$loading).sink { [weak self] _ in
-            DispatchQueue.main.async { self?.popover.relayout() }
-        }.store(in: &bag)
+        // @Published fires before the value changes, so resize once SwiftUI has
+        // re-rendered: results arriving, a meaning expanding, the pin.
+        model.objectWillChange
+            .debounce(for: .milliseconds(12), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.popover.relayout() }
+            .store(in: &bag)
 
         monitor.holdDelay = UserDefaults.standard.object(forKey: "holdDelay") as? Double ?? 0.35
         monitor.onHold = { [weak self] in self?.open() }
@@ -60,6 +63,10 @@ final class SingeController {
     func open() {
         guard !isOpen else { return }
         guard let sel = SelectionReader.read() else { return }       // nothing highlighted: do nothing
+        open(sel)
+    }
+
+    func open(_ sel: Selection) {
         let text = TermIndex.normalize(sel.text)
         guard !text.isEmpty, text.count <= 80, text.split(separator: " ").count <= 8 else { return }
 
@@ -88,6 +95,7 @@ final class SingeController {
 
         let profile = store.profile()
         let interests = store.topInterests(6)
+        let recent = store.records.map(\.term).filter { $0.caseInsensitiveCompare(text) != .orderedSame }.prefix(3)
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             guard let self else { return }
             let ranked = Ranker.rank(self.index.candidates(for: text), profile: profile)
@@ -103,7 +111,7 @@ final class SingeController {
                     }
                 } else {
                     self.show(Array(ranked.prefix(3)), for: text, app: sel.appName,
-                              interests: profile.isEmpty ? [] : interests)
+                              interests: Array(recent))
                 }
             }
         }

@@ -35,6 +35,28 @@ if let i = args.firstIndex(of: "--snapshot"), i + 2 < args.count {
     exit(0)
 }
 
+// Singe --demo "TERM": open the real highlight + popover over a fixed spot, then report
+// the popover's size and save its content to /tmp/singe-demo.png.
+if let i = args.firstIndex(of: "--demo"), i + 1 < args.count {
+    let app = NSApplication.shared
+    app.setActivationPolicy(.accessory)
+    let controller = SingeController(store: Store(path: NSTemporaryDirectory() + "singe-demo.sqlite"))
+    let rect = CGRect(x: 600, y: 400, width: 70, height: 22)
+    DispatchQueue.main.async {
+        controller.open(Selection(text: args[i + 1], rect: rect, font: nil, appName: "Demo"))
+        print("t=0.0 popover \(controller.popover.frame.size)")
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        let m = controller.popover.model
+        print("t=1.5 popover \(controller.popover.frame.size), senses \(m.senses.count), loading \(m.loading)")
+        if let rep = controller.popover.contentSnapshot() {
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "/tmp/singe-demo.png"))
+        }
+        exit(0)
+    }
+    app.run()
+}
+
 let app = NSApplication.shared
 let delegate = AppDelegate()
 app.delegate = delegate

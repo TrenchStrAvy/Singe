@@ -146,6 +146,9 @@ pkill -x Singe 2>/dev/null && sleep 0.5 || true
 rm -rf "$dest/Singe.app"
 cp -R build/Singe.app "$dest/Singe.app"
 xattr -cr "$dest/Singe.app" 2>/dev/null || true
+touch "$dest/Singe.app"                         # refresh the Dock / Finder icon
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+  -f "$dest/Singe.app" 2>/dev/null || true
 open "$dest/Singe.app"
 ok "installed $dest/Singe.app and opened it"
 

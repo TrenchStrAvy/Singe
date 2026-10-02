@@ -58,13 +58,22 @@ final class PopoverWindow: NSPanel {
         layout(anchor: lastAnchor)
     }
 
+    /// The SwiftUI content as an image (for `Singe --demo`).
+    func contentSnapshot() -> NSBitmapImageRep? {
+        guard let rep = hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds) else { return nil }
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        return rep
+    }
+
     private func layout(anchor: CGRect) {
         lastAnchor = anchor
         let screen = NSScreen.screens.first { $0.frame.intersects(anchor) } ?? NSScreen.main ?? NSScreen.screens[0]
         let visible = screen.visibleFrame
         let gap: CGFloat = 6
+        hosting.invalidateIntrinsicContentSize()
         hosting.layoutSubtreeIfNeeded()
         let size = hosting.fittingSize
+        guard size.height > 0 else { return }
         let above = anchor.maxY + gap + size.height <= visible.maxY
         model.arrowUp = !above
         var x = anchor.midX - size.width / 2

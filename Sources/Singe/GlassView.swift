@@ -90,7 +90,7 @@ final class GlassRenderer {
 
     /// Renders one frame offscreen: used for the app icon and the menu bar icon.
     func image(pixelSize: CGSize, scale: CGFloat, t: Double, dark: Bool, radius: CGFloat,
-               calm: Float = 1) -> CGImage? {
+               calm: Float = 1, pulse: Double = 0) -> CGImage? {
         guard let device, let queue, pipeline != nil else { return nil }
         let w = Int(pixelSize.width), h = Int(pixelSize.height)
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
@@ -105,7 +105,7 @@ final class GlassRenderer {
         pass.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return nil }
         encode(enc, uniforms: Self.uniforms(size: pixelSize, scale: scale, t: t, flow: t * 0.9, dark: dark,
-                                            pulse: 0, radius: radius, calm: calm))
+                                            pulse: pulse, radius: radius, calm: calm))
         enc.endEncoding()
         if let blit = cmd.makeBlitCommandEncoder() { blit.synchronize(resource: tex); blit.endEncoding() }
         cmd.commit()

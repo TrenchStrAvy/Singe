@@ -20,6 +20,7 @@ final class LookupModel: ObservableObject {
     var sourceNote: String {
         if senses.contains(where: { $0.source == .model }) { return "Local model · \(LocalModel.model)" }
         if senses.contains(where: { $0.source == .dictionary }) { return "Local · macOS Dictionary" }
+        if senses.first?.source == .glossary { return "Local · Singe glossary" }
         return "Local · Wiktionary"
     }
 }

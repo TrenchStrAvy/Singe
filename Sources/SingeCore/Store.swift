@@ -66,7 +66,16 @@ final class Store: ObservableObject {
                 PRIMARY KEY (list_id, key));
             CREATE TABLE IF NOT EXISTS profile (token TEXT PRIMARY KEY, weight REAL NOT NULL);
             """)
+        pruneProfile()
         refresh()
+    }
+
+    /// Drops filler words learned by earlier versions, so they no longer skew rankings.
+    private func pruneProfile() {
+        for word in Ranker.stopwords {
+            db.exec("DELETE FROM profile WHERE token = ?", [word])
+        }
+        db.exec("DELETE FROM profile WHERE length(token) < 3")
     }
 
     // MARK: lookups

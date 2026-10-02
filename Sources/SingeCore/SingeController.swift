@@ -117,7 +117,7 @@ final class SingeController {
             let exact = !multiWord || self.index.knowsWhole(text)
             let found = self.index.candidates(for: text, profile: profile)
             // a phrase built from its parts keeps the parts in reading order
-            let ranked = exact ? Ranker.rank(found, profile: profile) : found
+            let ranked = exact ? Ranker.rank(found, profile: profile, query: text) : found
             DispatchQueue.main.async {
                 guard id == self.lookupID else { return }
                 let needsModel = ranked.isEmpty || !exact

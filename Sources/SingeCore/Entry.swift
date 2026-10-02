@@ -18,7 +18,7 @@ public func singeMain() -> Int32 {
         let index = TermIndex()
         let found = index.candidates(for: term, profile: store.profile())
         let phrase = term.contains(" ") && !index.knowsWhole(term)
-        let ranked = phrase ? found : Ranker.rank(found, profile: store.profile())
+        let ranked = phrase ? found : Ranker.rank(found, profile: store.profile(), query: term)
         if phrase { print("(phrase: shown by its parts; the local model adds a one-sentence explanation)") }
         print("Singe · \(term)")
         if ranked.isEmpty { print("  (no meaning in the local index)") }

@@ -12,10 +12,6 @@ swift build -c release >/dev/null
 bin=$(swift build -c release --show-bin-path)
 cp "$bin/libSingeCore.dylib" build/libSingeCore.dylib 2>/dev/null || { mkdir -p build; cp "$bin/libSingeCore.dylib" build/; }
 
-# The launcher's identity: its source, this script and the icon. When this hash is
-# unchanged, install.sh keeps the installed Singe.app, so the permission stays.
-print -n "$(cat Sources/SingeLauncher/main.swift scripts/bundle.sh Sources/SingeCore/Icons.swift | shasum -a 256 | cut -c1-16)" > build/launcher.hash
-
 app=build/Singe.app
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -52,6 +48,12 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+# The launcher's identity: its source and its Info.plist. When this hash is unchanged,
+# install.sh keeps the installed Singe.app, so the permission stays. Icon changes alone
+# don't count: the running app sets its Dock icon itself, and `install.sh --refresh-icon`
+# replaces the bundle when you also want Finder and Launchpad updated.
+print -n "$(cat Sources/SingeLauncher/main.swift "$app/Contents/Info.plist" | shasum -a 256 | cut -c1-16)" > build/launcher.hash
 
 # ad-hoc signature with a stable identifier (no Apple Developer account needed)
 codesign --force --sign - --identifier app.singe.Singe "$app" >/dev/null 2>&1

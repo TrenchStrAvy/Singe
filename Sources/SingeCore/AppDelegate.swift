@@ -14,6 +14,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ note: Notification) {
         installMainMenu()
+        // The Dock shows the current icon even when the launcher bundle (which keeps the
+        // Accessibility permission) still carries an older .icns.
+        if let icon = Icons.appIcon(px: 512) { NSApp.applicationIconImage = NSImage(cgImage: icon, size: NSSize(width: 512, height: 512)) }
         splash.present()
         splash.stage("warming the glass…", 0.25)
         controller = SingeController(store: store)

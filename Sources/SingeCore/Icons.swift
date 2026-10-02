@@ -22,7 +22,7 @@ enum Icons {
     /// The app icon: the glass bar filling a white macOS squircle, like Sorph's orb, 1024 × 1024.
     static func appIcon(px: CGFloat = 1024) -> CGImage? {
         let s = px / 1024
-        let barW = 760 * s, barH = 330 * s
+        let barW = 680 * s, barH = 295 * s           // picked side by side with Sorph's 588 px orb
         guard let bar = GlassRenderer.shared.image(pixelSize: CGSize(width: barW, height: barH), scale: 4 * s,
                                                    t: 7.4, dark: true, radius: 24, calm: 1.25, pulse: 0.55) else { return nil }
         let space = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -57,6 +57,24 @@ enum Icons {
         ctx.fillPath()
         ctx.restoreGState()
         ctx.draw(bar, in: barRect)
+        return ctx.makeImage()
+    }
+
+    /// Just the icon's glass bar with its navy body, transparent around it (for the icon
+    /// size picker in mockups/icon-match). Same look as in appIcon.
+    static func iconBar(width: CGFloat, height: CGFloat) -> CGImage? {
+        let s = width / 760
+        guard let bar = GlassRenderer.shared.image(pixelSize: CGSize(width: width, height: height), scale: 4 * s,
+                                                   t: 7.4, dark: true, radius: 24, calm: 1.25, pulse: 0.55) else { return nil }
+        let space = CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let ctx = CGContext(data: nil, width: Int(width), height: Int(height), bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        let inset = CGRect(x: 0, y: 0, width: width, height: height).insetBy(dx: 4 * s, dy: 4 * s)
+        let radius = min(96 * s, inset.height / 2)
+        ctx.addPath(CGPath(roundedRect: inset, cornerWidth: radius, cornerHeight: radius, transform: nil))
+        ctx.setFillColor(NSColor(srgbRed: 0.09, green: 0.10, blue: 0.17, alpha: 1).cgColor)
+        ctx.fillPath()
+        ctx.draw(bar, in: CGRect(x: 0, y: 0, width: width, height: height))
         return ctx.makeImage()
     }
 

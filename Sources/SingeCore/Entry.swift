@@ -51,6 +51,12 @@ public func singeMain() -> Int32 {
         exit(0)
     }
 
+    if let i = args.firstIndex(of: "--render-bar"), i + 1 < args.count {
+        _ = NSApplication.shared
+        guard let img = Icons.iconBar(width: 1520, height: 660), Icons.writePNG(img, to: args[i + 1]) else { exit(1) }
+        exit(0)
+    }
+
     if let i = args.firstIndex(of: "--snapshot"), i + 2 < args.count {
         _ = NSApplication.shared
         Snapshot.render(to: args[i + 1], term: args[i + 2], dark: args.contains("--dark"))

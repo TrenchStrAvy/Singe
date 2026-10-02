@@ -17,6 +17,8 @@
 # Flags:
 #   --with-model   also pull gemma3:4b into Ollama (the fallback for unknown terms)
 #   --uninstall    remove Singe, its index and its history
+#   --refresh-icon also replace Singe.app so Finder and Launchpad show the new icon
+#                  (macOS then asks for Accessibility once more)
 #
 # Re-running is safe: it updates the source, rebuilds, and keeps your history.
 
@@ -28,11 +30,13 @@ src="$HOME/.singe/src"
 support="$HOME/Library/Application Support/Singe"
 with_model=false
 uninstall=false
+refresh_icon=false
 
 for arg in "$@"; do
   case $arg in
     --with-model) with_model=true ;;
     --uninstall)  uninstall=true ;;
+    --refresh-icon) refresh_icon=true ;;
     -h|--help)    sed -n '2,25p' "${0:A}" 2>/dev/null || true; exit 0 ;;
     *) print -u2 "unknown flag: $arg (see --help)"; exit 64 ;;
   esac
@@ -154,7 +158,7 @@ cp build/libSingeCore.dylib "$support/libSingeCore.dylib.new"
 mv -f "$support/libSingeCore.dylib.new" "$support/libSingeCore.dylib"
 cp VERSION "$support/version"
 regrant=false
-if [[ -n $existing && $new_hash == "$old_hash" ]]; then
+if [[ -n $existing && $new_hash == "$old_hash" ]] && ! $refresh_icon; then
   ok "kept $dest/Singe.app (unchanged launcher: your Accessibility permission stays)"
 else
   [[ -n $existing ]] && regrant=true

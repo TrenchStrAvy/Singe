@@ -30,6 +30,25 @@ enum LocalModel {
         URLSession.shared.dataTask(with: req).resume()
     }
 
+    /// One short sentence explaining a whole phrase: quick enough on a CPU (~40 tokens).
+    static func explain(_ phrase: String, interests: [String]) async -> Sense? {
+        let hint = interests.isEmpty ? "" : " The reader often reads about: \(interests.prefix(4).joined(separator: ", "))."
+        let prompt = "In one plain sentence of at most 28 words, explain what \"\(phrase)\" means.\(hint) Answer with the sentence only."
+        var req = URLRequest(url: endpoint, timeoutInterval: 45)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false, "keep_alive": "30m",
+                                   "options": ["temperature": 0.1, "num_predict": 60]]
+        req.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        guard let (data, _) = try? await URLSession.shared.data(for: req),
+              let outer = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              var text = (outer["response"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !text.isEmpty else { return nil }
+        text = text.trimmingCharacters(in: CharacterSet(charactersIn: "\"*"))
+        return Sense(id: "m:\(phrase)", term: phrase, name: TermIndex.titleCase(phrase), gloss: text,
+                     label: "Local model", topics: "", rank: 0, source: .model)
+    }
+
     static func meanings(for term: String, profileHint: [String]) async -> [Sense] {
         let hint = profileHint.isEmpty ? "" :
             " The reader often looks up terms about: \(profileHint.prefix(6).joined(separator: ", ")). List the meaning in that field first if one exists."
@@ -41,7 +60,7 @@ enum LocalModel {
         var req = URLRequest(url: endpoint, timeoutInterval: 20)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false, "format": "json",
+        let body: [String: Any] = ["model": model, "prompt": prompt, "stream": false, "format": "json", "keep_alive": "30m",
                                    "options": ["temperature": 0.1, "num_predict": 260]]
         req.httpBody = try? JSONSerialization.data(withJSONObject: body)
         guard let (data, _) = try? await URLSession.shared.data(for: req),

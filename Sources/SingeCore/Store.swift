@@ -91,6 +91,13 @@ final class Store: ObservableObject {
         refresh()
     }
 
+    /// Replaces the stored meaning without counting it as your choice (the phrase explanation).
+    func updateMeaning(term: String, sense: Sense) {
+        db.exec("UPDATE terms SET meaning = ?, gloss = ?, label = ? WHERE key = ?",
+                [sense.name, sense.gloss, sense.label, term.lowercased()])
+        refresh()
+    }
+
     func chosenMeaning(for term: String) -> String? {
         db.query("SELECT meaning FROM terms WHERE key = ?", [term.lowercased()]).first?["meaning"] as? String
     }

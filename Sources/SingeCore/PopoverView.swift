@@ -6,6 +6,7 @@ final class LookupModel: ObservableObject {
     @Published var senses: [Sense] = []
     @Published var selected: String?
     @Published var loading = false
+    @Published var explaining = false       // the local model is writing the phrase explanation
     @Published var status: String?
     @Published var starred = false
     @Published var pinned = false
@@ -85,6 +86,13 @@ struct PopoverView: View {
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                     .padding(.horizontal, 16).padding(.vertical, 12)
             } else {
+                if model.explaining {
+                    Rectangle().fill(line).frame(height: 1)
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Explaining the whole phrase…").font(.system(size: 12)).foregroundStyle(.secondary)
+                    }.padding(.horizontal, 16).padding(.vertical, 9)
+                }
                 ForEach(Array(model.senses.enumerated()), id: \.element.id) { i, sense in
                     row(i, sense)
                 }
@@ -120,9 +128,9 @@ struct PopoverView: View {
             } label: {
                 Image(systemName: model.starred ? "star.fill" : "star")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(model.starred ? Color(red: 1, green: 0.72, blue: 0) : .secondary)
+                    .foregroundStyle(model.starred ? Color.primary : .secondary)
                     .frame(width: 30, height: 30)
-                    .overlay(Circle().stroke(model.starred ? Color(red: 1, green: 0.72, blue: 0) : line, lineWidth: 1))
+                    .overlay(Circle().stroke(model.starred ? Color.primary : line, lineWidth: 1))
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -139,7 +147,8 @@ struct PopoverView: View {
                 Text("\(i + 1)").font(.system(size: 11)).foregroundStyle(.secondary).frame(minWidth: 12, alignment: .leading)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(sense.name).font(.system(size: 14, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
-                    if sense.term.caseInsensitiveCompare(model.term) != .orderedSame {
+                    if sense.term.caseInsensitiveCompare(model.term) != .orderedSame,
+                       sense.term.caseInsensitiveCompare(sense.name) != .orderedSame {
                         Text(sense.term).font(.system(size: 10.5)).foregroundStyle(.secondary)
                     }
                 }
@@ -149,8 +158,10 @@ struct PopoverView: View {
                     .padding(.horizontal, 7).padding(.vertical, 1)
                     .overlay(Capsule().stroke(line, lineWidth: 1))
             }
-            if on {
+            if on || sense.term.caseInsensitiveCompare(model.term) != .orderedSame {
+                // the selected meaning in full; the parts of a phrase always show their definition
                 Text(sense.gloss)
+                    .lineLimit(on ? nil : 2)
                     .font(.system(size: 13)).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 20)

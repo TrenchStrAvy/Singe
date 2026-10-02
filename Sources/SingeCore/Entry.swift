@@ -15,7 +15,11 @@ public func singeMain() -> Int32 {
     if let i = args.firstIndex(of: "--lookup"), i + 1 < args.count {
         let term = args[i + 1]
         let store = Store()
-        let ranked = Ranker.rank(TermIndex().candidates(for: term), profile: store.profile())
+        let index = TermIndex()
+        let found = index.candidates(for: term, profile: store.profile())
+        let phrase = term.contains(" ") && !index.knowsWhole(term)
+        let ranked = phrase ? found : Ranker.rank(found, profile: store.profile())
+        if phrase { print("(phrase: shown by its parts; the local model adds a one-sentence explanation)") }
         print("Singe · \(term)")
         if ranked.isEmpty { print("  (no meaning in the local index)") }
         for (n, s) in ranked.prefix(6).enumerated() {
@@ -66,7 +70,8 @@ public func singeMain() -> Int32 {
             controller.open(Selection(text: args[i + 1], rect: rect, font: nil, appName: "Demo"))
             print("t=0.0 popover \(controller.popover.frame.size)")
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+        let wait = Double(ProcessInfo.processInfo.environment["SINGE_DEMO_WAIT"] ?? "") ?? 1.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
             let m = controller.popover.model
             print("t=1.5 popover \(controller.popover.frame.size), senses \(m.senses.count), loading \(m.loading)")
         let g = controller.highlight.glass

@@ -99,6 +99,7 @@ final class SingeController {
         let model = popover.model
         model.term = text
         model.senses = []
+        model.explaining = false
         model.selected = nil
         model.pinned = false
         model.loading = true
@@ -112,20 +113,40 @@ final class SingeController {
         let recent = store.records.map(\.term).filter { $0.caseInsensitiveCompare(text) != .orderedSame }.prefix(3)
         DispatchQueue.global(qos: .userInteractive).async { [weak self] in
             guard let self else { return }
-            let ranked = Ranker.rank(self.index.candidates(for: text), profile: profile)
+            let multiWord = text.contains(" ")
+            let exact = !multiWord || self.index.knowsWhole(text)
+            let found = self.index.candidates(for: text, profile: profile)
+            // a phrase built from its parts keeps the parts in reading order
+            let ranked = exact ? Ranker.rank(found, profile: profile) : found
             DispatchQueue.main.async {
                 guard id == self.lookupID else { return }
-                if ranked.isEmpty {
-                    model.status = "Asking the local model…"
-                    Task { @MainActor in
-                        let senses = await LocalModel.meanings(for: text, profileHint: interests)
-                        guard id == self.lookupID else { return }
-                        self.show(senses, for: text, app: sel.appName, interests: [])
-                        if senses.isEmpty { model.status = "No meaning found on this Mac." }
-                    }
+                let needsModel = ranked.isEmpty || !exact
+                if !ranked.isEmpty {
+                    self.show(Array(ranked.prefix(3)), for: text, app: sel.appName, interests: Array(recent))
                 } else {
-                    self.show(Array(ranked.prefix(3)), for: text, app: sel.appName,
-                              interests: Array(recent))
+                    model.status = multiWord ? "Explaining the phrase with the local model…" : "Asking the local model…"
+                }
+                guard needsModel else { return }
+                // The whole phrase in one sentence from the local model: shown on top when it
+                // arrives, and saved to your history even if you have already let go.
+                model.explaining = !ranked.isEmpty
+                Task { @MainActor in
+                    let sense = await LocalModel.explain(text, interests: interests)
+                    let current = id == self.lookupID
+                    if current { model.explaining = false }
+                    guard let sense else {
+                        if current && ranked.isEmpty { model.loading = false; model.status = "No meaning found on this Mac." }
+                        return
+                    }
+                    if ranked.isEmpty {
+                        self.store.recordLookup(term: text, sense: sense, app: sel.appName)
+                    } else {
+                        self.store.updateMeaning(term: text, sense: sense)
+                    }
+                    guard current else { return }
+                    model.loading = false
+                    model.senses = [sense] + model.senses.prefix(3)
+                    model.selected = sense.id
                 }
             }
         }

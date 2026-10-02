@@ -166,7 +166,7 @@ struct MenuView: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 9) {
                 Image(systemName: r.starred ? "star.fill" : "star")
-                    .font(.system(size: 11)).foregroundStyle(r.starred ? Color(red: 1, green: 0.72, blue: 0) : .secondary.opacity(0.5))
+                    .font(.system(size: 11)).foregroundStyle(r.starred ? Color.primary : .secondary.opacity(0.5))
                     .onTapGesture { store.setStarred(r.key, !r.starred) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text(r.term).font(.system(size: 13, weight: .semibold))

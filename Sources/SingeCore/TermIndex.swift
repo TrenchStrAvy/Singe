@@ -42,10 +42,29 @@ final class TermIndex {
 
     /// Candidates for a selection. Slash- or comma-joined terms ("RTS/ITS") are looked up
     /// whole first, then per part, and the parts are interleaved.
-    func candidates(for selection: String) -> [Sense] {
+    /// True when the whole selection is a known term or phrase (not only its parts).
+    func knowsWhole(_ selection: String) -> Bool {
+        let whole = Self.normalize(selection)
+        return !(glossary[whole.lowercased()] ?? []).isEmpty || !wiktionarySenses(whole).isEmpty
+    }
+
+    func candidates(for selection: String, profile: [String: Double] = [:]) -> [Sense] {
         let whole = Self.normalize(selection)
         guard !whole.isEmpty else { return [] }
-        var found = lookup(whole)
+        let multiWord = whole.contains(" ")
+        var found = multiWord && !knowsWhole(whole) ? [] : lookup(whole)
+        // A phrase no index knows ("original packaging", "third-party ICT risk"): explain its
+        // parts. Longest known pieces first, one best meaning each, ranked by your history.
+        if found.isEmpty && multiWord {
+            found = phraseParts(whole).compactMap { Ranker.rank($0, profile: profile).first }.map { s in
+                // title each row by its part; abbreviations keep their expansion
+                let isAbbrev = s.name.caseInsensitiveCompare(s.term) != .orderedSame && s.source == .wiktionary
+                    && s.gloss.hasPrefix("Stands for")
+                return Sense(id: s.id, term: s.term, name: isAbbrev || s.source == .glossary ? s.name : s.term,
+                             gloss: s.gloss, label: s.label, topics: s.topics, rank: s.rank, source: s.source)
+            }
+            if !found.isEmpty { return found }
+        }
         if found.count < 3 || found.allSatisfy({ $0.source == .dictionary }) {
             let parts = whole.split(whereSeparator: { "/,;&+".contains($0) })
                 .map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
@@ -62,6 +81,47 @@ final class TermIndex {
         }
         var seen = Set<String>()
         return found.filter { seen.insert($0.name.lowercased()).inserted }
+    }
+
+    private static let phraseStopwords: Set<String> = [
+        "a", "an", "the", "of", "and", "or", "to", "in", "on", "for", "by", "with", "at", "as", "from",
+        "your", "my", "our", "their", "its", "his", "her", "this", "that", "these", "those", "is", "are",
+        "be", "was", "were", "it", "into", "not", "no", "do", "you", "we", "they", "i",
+    ]
+
+    /// Greedy left-to-right split into the longest pieces the index knows (up to four words).
+    func phraseParts(_ phrase: String) -> [[Sense]] {
+        let words = phrase.split(separator: " ").map(String.init)
+        var parts: [[Sense]] = []
+        var i = 0
+        while i < words.count {
+            var matched = false
+            for n in stride(from: min(4, words.count - i), through: 1, by: -1) {
+                let piece = words[i..<(i + n)].joined(separator: " ")
+                if n == 1 && Self.phraseStopwords.contains(piece.lowercased()) { break }
+                var senses = (glossary[piece.lowercased()] ?? []) + wiktionarySenses(piece)
+                if senses.isEmpty, piece.lowercased().hasSuffix("s"), piece.count > 3 {
+                    let singular = String(piece.dropLast())
+                    senses = (glossary[singular.lowercased()] ?? []) + wiktionarySenses(singular)
+                }
+                if senses.isEmpty, n == 1 {
+                    // "third-party" unknown? try its halves; then the macOS dictionary
+                    if piece.contains("-") {
+                        parts += phraseParts(piece.replacingOccurrences(of: "-", with: " "))
+                        matched = true; i += 1; break
+                    }
+                    if let d = dictionarySense(piece) { senses = [d] }
+                }
+                if !senses.isEmpty {
+                    parts.append(senses)
+                    i += n
+                    matched = true
+                    break
+                }
+            }
+            if !matched { i += 1 }
+        }
+        return parts
     }
 
     private func lookup(_ term: String) -> [Sense] {
@@ -97,7 +157,7 @@ final class TermIndex {
             }
             // Abbreviations show what they stand for; words show the gist of each sense,
             // since the term itself is already the popover's title.
-            let name = expansion.map(Self.titleCase) ?? Self.gist(gloss)
+            let name = expansion.map { Self.titleCase(Self.short($0)) } ?? Self.gist(gloss)
             let label = topics.split(separator: ",").first.map { String($0).trimmingCharacters(in: .whitespaces).capitalized }
                 ?? Self.posLabel(pos)
             return Sense(id: "w:\(word):\(row["rank"] as? Int ?? i)", term: word, name: name, gloss: gloss,
@@ -120,6 +180,14 @@ final class TermIndex {
     static func normalize(_ s: String) -> String {
         let trimmed = s.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters.subtracting(CharacterSet(charactersIn: "/&+-"))))
         return trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }.joined(separator: " ")
+    }
+
+    /// "Transmission Control Protocol/Internet Protocol, a standard for …" → the part before the comma.
+    static func short(_ expansion: String) -> String {
+        var e = expansion
+        if e.count > 48, let comma = e.range(of: ", ") { e = String(e[..<comma.lowerBound]) }
+        if e.count > 64, let paren = e.range(of: " (") { e = String(e[..<paren.lowerBound]) }
+        return e
     }
 
     static func gist(_ gloss: String) -> String {

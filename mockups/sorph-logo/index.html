@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sorph Logo Variants</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600&family=Sora:wght@600&family=JetBrains+Mono:wght@400&display=swap">
+<style>
+  :root { --bg: #F4F5F7; --ink: #111318; --muted: #6B7280; --line: #E6E8EC; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font-family: Manrope, sans-serif; -webkit-font-smoothing: antialiased; }
+  main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font: 600 22px Sora, sans-serif; margin: 0 0 6px; }
+  .tag { font: 11px "JetBrains Mono", monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  p { color: var(--muted); line-height: 1.55; max-width: 760px; }
+  .bar { display: flex; align-items: center; gap: 14px; margin: 18px 0 22px; flex-wrap: wrap; }
+  .bar label { display: flex; align-items: center; gap: 8px; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px; font-weight: 500; font-size: 14px; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
+  .card { background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .card .top { display: flex; align-items: baseline; gap: 10px; padding: 14px 16px 4px; }
+  .card .letter { font: 600 20px Sora, sans-serif; }
+  .card .desc { color: var(--muted); font-size: 13px; }
+  .pair { display: flex; justify-content: center; gap: 14px; padding: 14px 16px 18px; }
+  .pair canvas, .pair img { width: 150px; height: 150px; display: block; }
+  .dock { display: flex; justify-content: center; align-items: flex-end; gap: 12px; padding: 14px 0 10px; }
+  .dock.light { background: linear-gradient(#ebebee, #dddde1); }
+  .dock.dark { background: linear-gradient(#3a3a3e, #29292d); }
+  .dock canvas, .dock img { width: 56px; height: 56px; display: block; }
+  .dock .slot { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+  .dock .dot { width: 4px; height: 4px; border-radius: 50%; background: #333; }
+  .dock.dark .dot { background: #ddd; }
+  .names { display: flex; justify-content: center; gap: 92px; font: 11px "JetBrains Mono", monospace; color: var(--muted); padding-bottom: 12px; }
+  #gl { position: absolute; left: -9999px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Sorph logo, rebuilt</h1>
+  <div class="tag">Singe's glass, as a sphere · 5 variants</div>
+  <p>Each orb is rendered from scratch with Singe's glass: the same dark glass body, refracting rim, specular glint, colour finish and three ribbons ray-marched through the volume. Only the shape changes, from a bar to a sphere. No blue halo, and the old ribbon positions are gone. Each card shows the new Sorph icon next to Singe's at full size and in a light and a dark Dock. Tell me the letter you like.</p>
+  <div class="bar">
+    <label><input type="checkbox" id="animate"> Animate the ribbons (as in the app)</label>
+  </div>
+  <div class="grid" id="grid"></div>
+</main>
+<canvas id="gl" width="600" height="600"></canvas>
+
+<script>
+// ---------- the Singe glass shader (GlassShader.swift), with a sphere instead of a rounded bar
+const VERT = 'attribute vec2 p; void main(){ gl_Position = vec4(p, 0.0, 1.0); }';
+const FRAG = `
+precision highp float;
+uniform vec2 res; uniform float t; uniform float flow; uniform float pulse; uniform float calm;
+uniform float curve; uniform float rimK; uniform float specK; uniform float depthK; uniform float widthK; uniform float tilt;
+uniform vec3 c1; uniform vec3 c2; uniform vec3 c3;
+float ph(float x, float k) { return mod(x * k, 6.2831853); }
+mat3 rotY(float a) { float c = cos(a), s = sin(a); return mat3(c, 0.0, -s, 0.0, 1.0, 0.0, s, 0.0, c); }
+mat3 rotX(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float ribbon(vec3 p, vec3 A, vec3 B, vec3 C, vec3 D, float phs, float amp, float spd, float width, float reach) {
+  float f = dot(p, A) + amp * sin(dot(p, B) * 2.6 + ph(flow, 0.9 * spd) + phs) + amp * 0.55 * sin(dot(p, C) * 4.1 - ph(flow, 1.4 * spd));
+  float g = (dot(p, D) + 0.35 * sin(dot(p, B) * 1.7 - ph(flow, 0.6 * spd) + phs * 0.5)) / reach;
+  float core = exp(-f * f / (width * width));
+  float halo = exp(-f * f / (width * width * 6.0)) * 0.035;
+  return (core + halo) * exp(-g * g / 0.16);
+}
+void main() {
+  vec2 frag = gl_FragCoord.xy;
+  float dpr = res.x / 300.0;
+  vec2 p = frag - res * 0.5;
+  float R = res.x * 0.5 - 1.0 * dpr;
+  float d = length(p) - R;
+  float cover = clamp(0.5 - d, 0.0, 1.0);
+  if (cover <= 0.0) { gl_FragColor = vec4(0.0); return; }
+  vec2 q = p / R;                                   // -1..1 across the sphere
+  float rr = min(dot(q, q), 1.0);
+  float sz = sqrt(1.0 - rr);                        // true sphere height
+  // glass normal: the sphere's curvature, softened towards the centre like Singe's bevel
+  vec3 n = normalize(mix(vec3(0.0, 0.0, 1.0), vec3(q, sz), curve));
+  vec2 nxy = n.xy;
+  float fres = pow(1.0 - n.z, 2.2);
+  float lv = 0.18 + 0.6 * pulse;
+  float amp = 0.16 + 0.26 * lv;
+  float width = (0.05 + 0.012 * lv) * widthK;
+  float reach = 1.55;
+  mat3 M = rotY(ph(t, 0.18)) * rotX(0.35 + tilt + 0.15 * sin(ph(t, 0.3)));
+  vec2 base = q * 0.9 - nxy * 0.35;                 // the glass bends the view inside
+  const int STEPS = 40;
+  float depth = depthK * (0.35 + 0.65 * sz);        // thicker through the middle, like a ball
+  float dt = 2.0 * depth / float(STEPS);
+  float dither = hash(frag);
+  vec3 inner = vec3(0.0);
+  for (int i = 0; i < STEPS; i++) {
+    float z = -depth + (float(i) + dither) * dt;
+    vec3 qq = M * vec3(base, z);
+    float r1 = ribbon(qq, vec3(0.0, 1.0, 0.0), vec3(1.0, 0.2, 0.3), vec3(0.4, 0.0, 1.0), vec3(1.0, 0.0, 0.0), 0.0, amp, 1.0, width, reach);
+    float r2 = ribbon(qq, vec3(0.3, 0.8, 0.5), vec3(0.2, 1.0, -0.4), vec3(1.0, 0.3, 0.0), vec3(0.0, 0.0, 1.0), 2.1, amp * 0.9, 0.85, width, reach);
+    float r3 = ribbon(qq, vec3(-0.6, 0.5, 0.6), vec3(0.5, -0.3, 1.0), vec3(0.0, 1.0, 0.4), vec3(0.8, 0.6, 0.0), 4.2, amp * 1.1, 1.15, width * 0.9, reach);
+    float dz = clamp(abs(z) / max(depth, 0.001), 0.0, 1.0);
+    vec3 tint = mix(vec3(1.0), vec3(0.92, 0.94, 1.0), dz);
+    inner += ((c1 + 0.7 * r1) * r1 + (c2 + 0.7 * r2) * r2 + (c3 + 0.8 * r3) * r3) * tint * (1.0 - 0.35 * dz);
+  }
+  inner *= dt * (1.1 + 1.1 * lv + 0.9 * pulse) * 1.5 * calm;
+  vec3 L = normalize(vec3(-0.5, 0.8, 0.6));
+  float spec = pow(max(0.0, dot(n, normalize(L + vec3(0.0, 0.0, 1.0)))), 70.0) * specK;
+  float spec2 = pow(max(0.0, dot(n, normalize(L + vec3(0.0, 0.0, 1.0)))), 12.0) * 0.06 * specK;
+  vec3 rimCol = normalize(c1 + c3 + 0.001) * 1.15;
+  vec3 col = vec3(0.025, 0.028, 0.05) + inner + rimCol * fres * 0.75 * rimK + vec3(spec + spec2);
+  col += vec3(0.04, 0.045, 0.06) * smoothstep(0.1, 1.0, q.y) * 0.8;     // top sheen
+  col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);   // ACES, as in Sorph
+  float alpha = 0.97 * cover;
+  gl_FragColor = vec4(col * alpha, alpha);
+}`;
+
+function hsl(h, s, l) {
+  const k = n => (n + h / 30) % 12, A = s * Math.min(l, 1 - l);
+  const f = n => l - A * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+  return [f(0), f(8), f(4)];
+}
+const COLORS = [236, 184, 290].map(h => hsl(h, 0.40, 0.62));   // Sorph's ribbon hues, as in Singe
+
+// ---------- variants: same glass, different moment and character
+const VARIANTS = [
+  // t is the frozen moment; `search` lets the page pick, near t, the frame whose balance of black
+  // glass and bright ribbons is closest to Singe's icon (measured from the pixels)
+  // frozen moments picked by eye from ?pick (a contact sheet of candidates)
+  { k: 'A', desc: 'Crossing ribbons on dark glass: Singe\'s settings exactly', t: 12.65, base: 7.4, pulse: 0.55, calm: 1.25, curve: 0.55, rimK: 1.0, specK: 1.0, depthK: 0.7, widthK: 1.0, tilt: 0.0 },
+  { k: 'B', desc: 'A diagonal sweep with a glint, like the bar\'s flow', t: 8.75, base: 2.0, pulse: 0.55, calm: 1.2, curve: 0.55, rimK: 1.0, specK: 1.0, depthK: 0.6, widthK: 1.0, tilt: -0.45 },
+  { k: 'C', desc: 'Rounder, glossier glass: stronger curve, rim light and glint', t: 16.5, base: 12.0, pulse: 0.4, calm: 0.7, curve: 0.85, rimK: 1.5, specK: 1.5, depthK: 0.5, widthK: 1.0, tilt: 0.15 },
+  { k: 'D', desc: 'Bold ribbons sweeping low across the ball', t: 25.5, base: 18.0, pulse: 0.7, calm: 0.95, curve: 0.6, rimK: 1.0, specK: 1.0, depthK: 0.5, widthK: 1.25, tilt: 0.0 },
+  { k: 'E', desc: 'One fine ribbon on deep black glass: the calmest', t: 30.0, base: 24.0, pulse: 0.3, calm: 1.0, curve: 0.6, rimK: 0.8, specK: 1.1, depthK: 0.55, widthK: 0.8, tilt: 0.3 },
+];
+
+// ---------- one WebGL context renders every orb; 2D canvases compose the icons
+const glc = document.getElementById('gl');
+const gl = glc.getContext('webgl', { premultipliedAlpha: true, alpha: true, preserveDrawingBuffer: true });
+const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+const prog = gl.createProgram();
+gl.attachShader(prog, sh(gl.VERTEX_SHADER, VERT)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FRAG));
+gl.linkProgram(prog); gl.useProgram(prog);
+gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 1,-1, -1,1, 1,1]), gl.STATIC_DRAW);
+const loc = gl.getAttribLocation(prog, 'p'); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+const U = n => gl.getUniformLocation(prog, n);
+gl.uniform3fv(U('c1'), COLORS[0]); gl.uniform3fv(U('c2'), COLORS[1]); gl.uniform3fv(U('c3'), COLORS[2]);
+
+function renderOrb(v, time) {
+  gl.viewport(0, 0, glc.width, glc.height);
+  gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.uniform2f(U('res'), glc.width, glc.height);
+  gl.uniform1f(U('t'), time); gl.uniform1f(U('flow'), time * 0.9);
+  for (const key of ['pulse', 'calm', 'curve', 'rimK', 'specK', 'depthK', 'widthK', 'tilt']) gl.uniform1f(U(key), v[key]);
+  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  return glc;
+}
+
+// Same body as Singe's icon: 824 px rounded square inset 100 px in 1024, radius 185.
+const ORB = 588;   // the size you picked
+function drawIcon(canvas, orbCanvas) {
+  const W = canvas.width, s = W / 1024, g = canvas.getContext('2d');
+  g.clearRect(0, 0, W, W);
+  const path = new Path2D(); path.roundRect(100 * s, 100 * s, 824 * s, 824 * s, 185 * s);
+  g.save(); g.shadowColor = 'rgba(0,0,0,0.22)'; g.shadowBlur = 24 * s; g.shadowOffsetY = 8 * s; g.fillStyle = '#fff'; g.fill(path); g.restore();
+  g.save(); g.clip(path);
+  const grad = g.createLinearGradient(0, 100 * s, 0, 924 * s); grad.addColorStop(0, '#fff'); grad.addColorStop(1, '#f2f3f7');
+  g.fillStyle = grad; g.fillRect(0, 0, W, W);
+  const d = ORB * s, cx = 512 * s, cy = 512 * s;
+  // navy body + soft contact shadow, exactly as under Singe's bar
+  g.save(); g.shadowColor = 'rgba(20,23,51,0.35)'; g.shadowBlur = 30 * s; g.shadowOffsetY = 14 * s;
+  g.beginPath(); g.arc(cx, cy, d / 2 - 4 * s, 0, Math.PI * 2); g.fillStyle = 'rgb(23,26,43)'; g.fill(); g.restore();
+  g.drawImage(orbCanvas, cx - d / 2, cy - d / 2, d, d);
+  g.restore();
+}
+
+// ---------- build the cards (after the moments are picked; see below)
+const grid = document.getElementById('grid');
+const icons = [];
+for (const v of VARIANTS) {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.innerHTML = `
+    <div class="top"><span class="letter">${v.k}</span><span class="desc">${v.desc}</span></div>
+    <div class="pair"><canvas width="600" height="600"></canvas><img src="../icon-match/singe-icon.png" alt="Singe"></div>
+    <div class="names"><span>Sorph ${v.k}</span><span>Singe</span></div>
+    <div class="dock light"><div class="slot"><canvas width="224" height="224"></canvas><span class="dot"></span></div><div class="slot"><img src="../icon-match/singe-icon.png" alt=""><span class="dot"></span></div></div>
+    <div class="dock dark"><div class="slot"><canvas width="224" height="224"></canvas><span class="dot"></span></div><div class="slot"><img src="../icon-match/singe-icon.png" alt=""><span class="dot"></span></div></div>`;
+  grid.appendChild(card);
+  icons.push({ v, canvases: [...card.querySelectorAll('canvas')] });
+}
+
+function renderAll(time) {
+  for (const { v, canvases } of icons) {
+    const orb = renderOrb(v, time === undefined ? v.t : v.t + time);
+    canvases.forEach(c => drawIcon(c, orb));
+  }
+}
+renderAll();
+
+// ?pick: a contact sheet of candidate moments per variant (to choose the frozen frame by eye)
+if (location.search.includes('pick')) {
+  document.querySelector('main').innerHTML = '<h1>Candidate moments</h1>';
+  for (const v of VARIANTS) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;align-items:center;margin:8px 0;flex-wrap:wrap';
+    row.innerHTML = `<b style="width:20px">${v.k}</b>`;
+    for (let i = 0; i < 16; i++) {
+      const t = (v.base ?? v.t) + i * 0.75;
+      const c = document.createElement('canvas'); c.width = c.height = 120;
+      c.style.cssText = 'width:60px;height:60px';
+      const g = c.getContext('2d'); g.drawImage(renderOrb(v, t), 0, 0, 120, 120);
+      const wrap = document.createElement('div'); wrap.style.cssText = 'text-align:center;font:10px monospace';
+      wrap.appendChild(c); wrap.appendChild(document.createTextNode(t.toFixed(2)));
+      row.appendChild(wrap);
+    }
+    document.querySelector('main').appendChild(row);
+  }
+}
+
+let raf = null;
+document.getElementById('animate').addEventListener('change', e => {
+  if (e.target.checked) {
+    const start = performance.now();
+    const loop = now => { renderAll((now - start) / 1000 * 0.9); raf = requestAnimationFrame(loop); };
+    raf = requestAnimationFrame(loop);
+  } else { cancelAnimationFrame(raf); renderAll(); }
+});
+</script>
+</body>
+</html>

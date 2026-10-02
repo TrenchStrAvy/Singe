@@ -123,5 +123,70 @@ enum GlassShader {
         alpha = clamp(alpha, 0.0, 1.0) * cover;
         return float4(col * alpha, alpha);
     }
+
+    // ---- Sorph's orb: the same glass as a sphere (mockups/sorph-logo, variant B)
+    struct OrbUniforms {
+        float2 res;
+        float t;
+        float flow;
+        float pulse;
+        float calm;
+        float curve;     // how much of the sphere's curvature the glass normal follows
+        float rimK;
+        float specK;
+        float depthK;
+        float widthK;
+        float tilt;
+        float3 c1;
+        float3 c2;
+        float3 c3;
+    };
+
+    fragment float4 orb_fragment(VOut in [[stage_in]], constant OrbUniforms &u [[buffer(0)]]) {
+        float2 frag = float2(in.pos.x, u.res.y - in.pos.y);
+        float dpr = u.res.x / 300.0;
+        float2 p = frag - u.res * 0.5;
+        float R = u.res.x * 0.5 - 1.0 * dpr;
+        float d = length(p) - R;
+        float cover = clamp(0.5 - d, 0.0, 1.0);
+        if (cover <= 0.0) { return float4(0); }
+        float2 q = p / R;
+        float rr = min(dot(q, q), 1.0);
+        float sz = sqrt(1.0 - rr);
+        float3 n = normalize(mix(float3(0, 0, 1), float3(q, sz), u.curve));
+        float2 nxy = n.xy;
+        float fres = pow(1.0 - n.z, 2.2);
+        float lv = 0.18 + 0.6 * u.pulse;
+        float amp = 0.16 + 0.26 * lv;
+        float width = (0.05 + 0.012 * lv) * u.widthK;
+        float reach = 1.55;
+        float3x3 M = rotY(ph(u.t, 0.18)) * rotX(0.35 + u.tilt + 0.15 * sin(ph(u.t, 0.3)));
+        float2 base = q * 0.9 - nxy * 0.35;
+        const int STEPS = 40;
+        float depth = u.depthK * (0.35 + 0.65 * sz);
+        float dt = 2.0 * depth / float(STEPS);
+        float dither = hash(frag);
+        float3 inner = float3(0);
+        for (int i = 0; i < STEPS; i++) {
+            float z = -depth + (float(i) + dither) * dt;
+            float3 qq = M * float3(base, z);
+            float r1 = ribbon(qq, float3(0, 1, 0), float3(1, 0.2, 0.3), float3(0.4, 0, 1), float3(1, 0, 0), 0.0, amp, 1.0, width, reach, u.flow);
+            float r2 = ribbon(qq, float3(0.3, 0.8, 0.5), float3(0.2, 1, -0.4), float3(1, 0.3, 0), float3(0, 0, 1), 2.1, amp * 0.9, 0.85, width, reach, u.flow);
+            float r3 = ribbon(qq, float3(-0.6, 0.5, 0.6), float3(0.5, -0.3, 1), float3(0, 1, 0.4), float3(0.8, 0.6, 0), 4.2, amp * 1.1, 1.15, width * 0.9, reach, u.flow);
+            float dz = clamp(abs(z) / max(depth, 0.001), 0.0, 1.0);
+            float3 tint = mix(float3(1), float3(0.92, 0.94, 1.0), dz);
+            inner += ((u.c1 + 0.7 * r1) * r1 + (u.c2 + 0.7 * r2) * r2 + (u.c3 + 0.8 * r3) * r3) * tint * (1.0 - 0.35 * dz);
+        }
+        inner *= dt * (1.1 + 1.1 * lv + 0.9 * u.pulse) * 1.5 * u.calm;
+        float3 L = normalize(float3(-0.5, 0.8, 0.6));
+        float sp = max(0.0, dot(n, normalize(L + float3(0, 0, 1))));
+        float spec = pow(sp, 70.0) * u.specK + pow(sp, 12.0) * 0.06 * u.specK;
+        float3 rimCol = normalize(u.c1 + u.c3 + 0.001) * 1.15;
+        float3 col = float3(0.025, 0.028, 0.05) + inner + rimCol * fres * 0.75 * u.rimK + float3(spec);
+        col += float3(0.04, 0.045, 0.06) * smoothstep(0.1, 1.0, q.y) * 0.8;
+        col = clamp((col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14), 0.0, 1.0);
+        float alpha = 0.97 * cover;
+        return float4(col * alpha, alpha);
+    }
     """
 }

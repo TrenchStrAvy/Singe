@@ -36,6 +36,23 @@ struct GlassUniforms {
     var c3: SIMD3<Float>
 }
 
+struct OrbUniforms {
+    var res: SIMD2<Float>
+    var t: Float
+    var flow: Float
+    var pulse: Float
+    var calm: Float
+    var curve: Float
+    var rimK: Float
+    var specK: Float
+    var depthK: Float
+    var widthK: Float
+    var tilt: Float
+    var c1: SIMD3<Float>
+    var c2: SIMD3<Float>
+    var c3: SIMD3<Float>
+}
+
 /// One Metal pipeline shared by every glass surface (highlight, logo, menu bar icon).
 final class GlassRenderer {
     static let shared = GlassRenderer()
@@ -69,6 +86,50 @@ final class GlassRenderer {
             }
         }
         pipeline = state
+    }
+
+    /// Sorph's orb in Singe's glass (variant B from mockups/sorph-logo), rendered offscreen.
+    /// t = 4.55 is the frozen moment picked in the variant page.
+    func orbImage(pixels: Int, t: Float = 4.55) -> CGImage? {
+        guard let device, let queue,
+              let lib = try? device.makeLibrary(source: GlassShader.source, options: nil) else { return nil }
+        let desc = MTLRenderPipelineDescriptor()
+        desc.vertexFunction = lib.makeFunction(name: "glass_vertex")
+        desc.fragmentFunction = lib.makeFunction(name: "orb_fragment")
+        let att = desc.colorAttachments[0]!
+        att.pixelFormat = .bgra8Unorm
+        att.isBlendingEnabled = true
+        att.sourceRGBBlendFactor = .one; att.sourceAlphaBlendFactor = .one
+        att.destinationRGBBlendFactor = .oneMinusSourceAlpha; att.destinationAlphaBlendFactor = .oneMinusSourceAlpha
+        guard let state = try? device.makeRenderPipelineState(descriptor: desc) else { return nil }
+        let tdesc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: pixels, height: pixels, mipmapped: false)
+        tdesc.usage = [.renderTarget, .shaderRead]
+        tdesc.storageMode = .managed
+        guard let tex = device.makeTexture(descriptor: tdesc), let cmd = queue.makeCommandBuffer() else { return nil }
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = tex
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 0)
+        pass.colorAttachments[0].storeAction = .store
+        guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return nil }
+        let c = Ribbon.colors()
+        // variant B: one ribbon sweeping across the middle, with a glint
+        var u = OrbUniforms(res: SIMD2(Float(pixels), Float(pixels)), t: t, flow: t * 0.9, pulse: 0.55, calm: 1.2,
+                            curve: 0.55, rimK: 1.0, specK: 1.0, depthK: 0.6, widthK: 1.0, tilt: -0.45,
+                            c1: c[0], c2: c[1], c3: c[2])
+        enc.setRenderPipelineState(state)
+        enc.setFragmentBytes(&u, length: MemoryLayout<OrbUniforms>.stride, index: 0)
+        enc.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        enc.endEncoding()
+        if let blit = cmd.makeBlitCommandEncoder() { blit.synchronize(resource: tex); blit.endEncoding() }
+        cmd.commit(); cmd.waitUntilCompleted()
+        var bytes = [UInt8](repeating: 0, count: pixels * pixels * 4)
+        tex.getBytes(&bytes, bytesPerRow: pixels * 4, from: MTLRegionMake2D(0, 0, pixels, pixels), mipmapLevel: 0)
+        let info = CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue)
+        guard let provider = CGDataProvider(data: Data(bytes) as CFData) else { return nil }
+        return CGImage(width: pixels, height: pixels, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: pixels * 4,
+                       space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: info, provider: provider,
+                       decode: nil, shouldInterpolate: true, intent: .defaultIntent)
     }
 
     func encode(_ enc: MTLRenderCommandEncoder, uniforms: GlassUniforms) {

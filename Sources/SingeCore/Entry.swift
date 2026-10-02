@@ -51,6 +51,14 @@ public func singeMain() -> Int32 {
         exit(0)
     }
 
+    // Singe --render-orb out.png [px]: Sorph's logo in Singe's glass (used by Sorph's icon script)
+    if let i = args.firstIndex(of: "--render-orb"), i + 1 < args.count {
+        _ = NSApplication.shared
+        let px = args.count > i + 2 ? Int(args[i + 2]) ?? 1200 : 1200
+        guard let img = GlassRenderer.shared.orbImage(pixels: px), Icons.writePNG(img, to: args[i + 1]) else { exit(1) }
+        exit(0)
+    }
+
     if let i = args.firstIndex(of: "--render-bar"), i + 1 < args.count {
         _ = NSApplication.shared
         guard let img = Icons.iconBar(width: 1520, height: 660), Icons.writePNG(img, to: args[i + 1]) else { exit(1) }

@@ -92,6 +92,33 @@ public func singeMain() -> Int32 {
         app.run()
     }
 
+    // Singe --menu-demo: open the menu bar panel under a fake icon, capture it, then open
+    // the first collection and capture again (/tmp/singe-menu-*.png).
+    if args.contains("--menu-demo") {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        let store = Store(), state = AppState()
+        state.trusted = true
+        let panel = MenuPanel(content: MenuView(store: store, app: state, onExport: {}, onQuit: {}, startTab: .lists))
+        func capture(_ name: String) {
+            if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(panel.windowNumber),
+                                                  [.boundsIgnoreFraming, .bestResolution]) {
+                _ = Icons.writePNG(shot, to: "/tmp/singe-menu-\(name).png")
+                print("menu \(name): \(panel.frame.size) → /tmp/singe-menu-\(name).png")
+            }
+        }
+        DispatchQueue.main.async {
+            let s = NSScreen.main!.frame
+            panel.show(under: CGRect(x: s.midX, y: s.maxY - 30, width: 24, height: 22), on: NSScreen.main)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            capture("lists")
+            NotificationCenter.default.post(name: MenuView.openFirstForDemo, object: nil)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) { capture("collection"); exit(0) }
+        app.run()
+    }
+
     // Singe --demo "TERM": open the real highlight + popover over a fixed spot, then report
     // the popover's size and save its content to /tmp/singe-demo.png.
     if let i = args.firstIndex(of: "--demo"), i + 1 < args.count {

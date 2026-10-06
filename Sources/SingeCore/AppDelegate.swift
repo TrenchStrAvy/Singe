@@ -7,7 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let appState = AppState()
     private var controller: SingeController!
     private var statusItem: NSStatusItem!
-    private let menuPopover = NSPopover()
+    private var menuPanel: MenuPanel!
     private var trustTimer: Timer?
 
     private let splash = SplashWindow()
@@ -29,8 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.target = self
             button.action = #selector(toggleMenu)
         }
-        menuPopover.behavior = .transient
-        menuPopover.contentViewController = NSHostingController(rootView: MenuView(
+        menuPanel = MenuPanel(content: MenuView(
             store: store, app: appState,
             onExport: { [weak self] in self?.export() },
             onQuit: { NSApp.terminate(nil) }))
@@ -120,7 +119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Clicking the Dock icon opens the History panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if !menuPopover.isShown { toggleMenu() }
+        if !menuPanel.isVisible { toggleMenu() }
         return false
     }
 
@@ -145,17 +144,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func toggleMenu() {
         guard let button = statusItem.button else { return }
-        if menuPopover.isShown {
-            menuPopover.performClose(nil)
-        } else {
+        if menuPanel.isVisible {
+            menuPanel.close()
+        } else if menuPanel.closedAt.timeIntervalSinceNow < -0.3 {
             store.refresh()
             NSApp.activate(ignoringOtherApps: true)
-            menuPopover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            menuPanel.show(under: button)
         }
     }
 
     private func export() {
-        menuPopover.performClose(nil)
+        menuPanel.close()
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "Singe Glossary.md"
         panel.allowedContentTypes = [UTType(filenameExtension: "md") ?? .plainText]

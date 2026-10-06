@@ -20,6 +20,8 @@ struct Selection {
     let rect: CGRect?          // AppKit screen coordinates (bottom-left origin)
     let font: NSFont?
     let appName: String
+    /// The text field or page the selection is in, for placing the popover when `rect` is unknown.
+    var field: CGRect? = nil
 }
 
 /// Reads the highlighted text through the Accessibility API. Web views (Chrome,
@@ -89,7 +91,8 @@ enum SelectionReader {
         if !allowCopy && !forceCopy { return nil }
         if let text = copySelection(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             singeLog.notice("selection via ⌘C in \(appName): \(text.count) chars")
-            return Selection(text: text, rect: caretRect(focused), font: nil, appName: appName)
+            return Selection(text: text, rect: focused.flatMap { checked(caretRect($0), in: $0) }, font: nil,
+                             appName: appName, field: focused.flatMap(fieldFrame))
         }
         singeLog.notice("nothing selected in \(appName)")
         return nil
@@ -117,7 +120,7 @@ enum SelectionReader {
                 font = fontFrom(a)
             }
         }
-        return Selection(text: text, rect: rect, font: font, appName: appName)
+        return Selection(text: text, rect: checked(rect, in: el), font: font, appName: appName, field: fieldFrame(el))
     }
 
     // MARK: web content (Chrome, Safari, Electron)
@@ -142,7 +145,7 @@ enum SelectionReader {
            let a = attributed as? NSAttributedString, a.length > 0 {
             font = fontFrom(a)
         }
-        return Selection(text: text, rect: rect, font: font, appName: appName)
+        return Selection(text: text, rect: checked(rect, in: el), font: font, appName: appName, field: fieldFrame(el))
     }
 
     /// Chrome and Electron build their accessibility tree only when asked.
@@ -196,15 +199,22 @@ enum SelectionReader {
         return text
     }
 
-    /// Breadth-first search for the page's AXWebArea, a few levels deep.
+    /// Breadth-first search for the page's AXWebArea, a few levels deep. Toolbars are skipped:
+    /// a full bookmarks bar, tab groups and extension buttons used up the whole budget before
+    /// the search reached Chrome's page, so Chrome always fell back to ⌘C (no highlight).
+    private static let notPage: Set<String> = ["AXToolbar", "AXTabGroup", "AXMenuBar", "AXMenu", "AXButton",
+                                                "AXPopUpButton", "AXMenuButton", "AXTextField", "AXRadioButton"]
+
     private static func findWebArea(in root: AXUIElement) -> AXUIElement? {
         var queue: [(AXUIElement, Int)] = [(root, 0)]
         var visited = 0
-        while !queue.isEmpty && visited < 400 {
+        while !queue.isEmpty && visited < 600 {
             let (el, depth) = queue.removeFirst()
             visited += 1
-            if (attribute(el, kAXRoleAttribute) as String?) == "AXWebArea" { return el }
-            guard depth < 10, let kids: [AXUIElement] = attribute(el, kAXChildrenAttribute) else { continue }
+            let role: String? = attribute(el, kAXRoleAttribute)
+            if role == "AXWebArea" { return el }
+            if let role, notPage.contains(role) { continue }
+            guard depth < 12, let kids: [AXUIElement] = attribute(el, kAXChildrenAttribute) else { continue }
             queue.append(contentsOf: kids.map { ($0, depth + 1) })
         }
         return nil
@@ -227,15 +237,15 @@ enum SelectionReader {
         let a = TermIndex.normalize(copied), b = TermIndex.normalize(sel.text)
         guard !a.isEmpty, a != b else { return sel }
         singeLog.notice("selection reported by accessibility did not match the copy; using the copy (\(a.count) chars)")
-        return Selection(text: copied, rect: nil, font: nil, appName: sel.appName)
+        return Selection(text: copied, rect: nil, font: nil, appName: sel.appName, field: sel.field)
     }
 
     /// Marks Singe's own synthetic ⌘C so the hold monitor ignores it.
     static let syntheticTag: Int64 = 0x53494E4745   // "SINGE"
 
     /// Where the text cursor is, when the app tells us; used to place the popover after ⌘C.
-    private static func caretRect(_ el: AXUIElement?) -> CGRect? {
-        guard let el, let range: AXValue = attribute(el, kAXSelectedTextRangeAttribute) else { return nil }
+    private static func caretRect(_ el: AXUIElement) -> CGRect? {
+        guard let range: AXValue = attribute(el, kAXSelectedTextRangeAttribute) else { return nil }
         var bounds: CFTypeRef?
         guard AXUIElementCopyParameterizedAttributeValue(el, kAXBoundsForRangeParameterizedAttribute as CFString,
                                                          range, &bounds) == .success,
@@ -243,6 +253,29 @@ enum SelectionReader {
         var r = CGRect.zero
         guard AXValueGetValue(b as! AXValue, .cgRect, &r), r.width > 1, r.height > 1 else { return nil }
         return flip(r)
+    }
+
+    /// Some apps (alfaview and other Qt apps) report selection bounds that are nowhere near
+    /// the text, so the highlight and popover appeared far from the word. Bounds must lie on
+    /// a screen and inside the element that holds the text; otherwise they are dropped.
+    private static func checked(_ rect: CGRect?, in el: AXUIElement) -> CGRect? {
+        guard let r = rect, r.width > 0, r.height > 0 else { return nil }
+        let onScreen = NSScreen.screens.contains { $0.frame.intersects(r) }
+        let inside = fieldFrame(el).map { $0.insetBy(dx: -8, dy: -8).contains(CGPoint(x: r.midX, y: r.midY)) } ?? true
+        if !onScreen || !inside {
+            singeLog.notice("dropped selection bounds \(r) outside \(fieldFrame(el).map { "\($0)" } ?? "the screen")")
+            return nil
+        }
+        return r
+    }
+
+    /// The element's frame in AppKit screen coordinates.
+    private static func fieldFrame(_ el: AXUIElement) -> CGRect? {
+        guard let p: AXValue = attribute(el, kAXPositionAttribute), let s: AXValue = attribute(el, kAXSizeAttribute) else { return nil }
+        var origin = CGPoint.zero, size = CGSize.zero
+        guard AXValueGetValue(p, .cgPoint, &origin), AXValueGetValue(s, .cgSize, &size),
+              size.width > 0, size.height > 0 else { return nil }
+        return flip(CGRect(origin: origin, size: size))
     }
 
     // MARK: helpers

@@ -95,7 +95,11 @@ final class SingeController {
             anchor = rect.insetBy(dx: -HighlightWindow.padX, dy: -HighlightWindow.padY)
         } else {
             let m = NSEvent.mouseLocation
-            anchor = sel.rect ?? CGRect(x: m.x - 1, y: m.y - 8, width: 2, height: 16)
+            let mouse = CGRect(x: m.x - 1, y: m.y - 8, width: 2, height: 16)
+            // no position for the word: point at the text field it is in (a chat box, a search
+            // field), or at the pointer when the field is a whole page
+            let field = sel.field.flatMap { $0.height < 120 ? $0 : nil }
+            anchor = sel.rect ?? field ?? mouse
         }
 
         let model = popover.model

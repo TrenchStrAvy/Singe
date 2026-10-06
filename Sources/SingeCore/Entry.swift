@@ -125,7 +125,28 @@ public func singeMain() -> Int32 {
         if let rep = controller.popover.contentSnapshot() {
                 try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: "/tmp/singe-demo.png"))
             }
-            exit(0)
+            // the popover window as composited (glass, white, rim), then mid-way and after
+            // switching to the second meaning, to check the window flows with its content
+            func capture(_ name: String) {
+                let pid = CGWindowID(controller.popover.windowNumber)
+                if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, pid, [.boundsIgnoreFraming, .bestResolution]) {
+                    _ = Icons.writePNG(shot, to: "/tmp/singe-popover-\(name).png")
+                    print("popover \(name): \(controller.popover.frame.size) → /tmp/singe-popover-\(name).png")
+                }
+            }
+            capture("open")
+            guard m.senses.count > 1 else { exit(0) }
+            let next = m.senses[1]
+            withAnimation(PopoverView.flow) { m.selected = next.id }
+            m.onSelect?(next)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { capture("mid") }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+                capture("switched")
+                m.onCreate?(next, "Security+")
+                withAnimation(PopoverView.flow) { m.saving = next.id }
+                m.onSelect?(next)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { capture("save"); exit(0) }
         }
         app.run()
     }

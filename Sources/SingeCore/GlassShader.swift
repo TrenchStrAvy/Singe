@@ -18,6 +18,7 @@ enum GlassShader {
         float pulse;     // 1 on open, decays to 0
         float radius;    // corner radius, points
         float calm;      // ribbon strength behind a term
+        float edge;      // > 0: only the outer `edge` points are drawn (the popover's rim)
         float3 c1;
         float3 c2;
         float3 c3;
@@ -59,8 +60,8 @@ enum GlassShader {
         float r = min(u.radius * dpr, hb.y);
         float d = sdBox(p, hb, r);
         float cover = clamp(0.5 - d, 0.0, 1.0);
-        if (cover <= 0.0) { return float4(0); }
         float e = max(-d, 0.0);
+        if (cover <= 0.0 || (u.edge > 0.0 && e > u.edge * dpr)) { return float4(0); }
 
         // glass bevel: steep at the rim, flat in the middle
         float bevel = min(hb.y * 0.8, 7.0 * dpr);

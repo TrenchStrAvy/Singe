@@ -20,10 +20,22 @@ final class SingeController {
             self.store.choose(term: model.term, sense: sense)
             DispatchQueue.main.async { self.popover.relayout() }
         }
-        model.onStar = { [weak self] on in self?.store.setStarred(model.term, on) }
-        model.onFollowUp = { [weak self] in
+        model.onToggle = { [weak self] sense, list in
+            guard let self else { return }
+            self.store.toggle(term: model.term, meaning: sense.name, gloss: sense.gloss, label: sense.label, in: list)
+            self.refreshSaved()
+        }
+        model.onCreate = { [weak self] sense, name in
+            guard let self else { return }
+            let list = self.store.createList(name: name)
+            self.store.toggle(term: model.term, meaning: sense.name, gloss: sense.gloss, label: sense.label, in: list)
+            self.refreshSaved()
+        }
+        // the follow-up box and the save panel keep the popover open after Control is let go
+        model.onPin = { [weak self] in
+            guard let self, !model.pinned else { return }
             model.pinned = true
-            DispatchQueue.main.async { self?.popover.relayout() }
+            self.popover.makeKey()
         }
         // @Published fires before the value changes, so resize once SwiftUI has
         // re-rendered: results arriving, a meaning expanding, the pin.
@@ -110,8 +122,10 @@ final class SingeController {
         model.pinned = false
         model.loading = true
         model.status = nil
-        model.starred = store.isStarred(text)
         model.interests = []
+        model.saving = nil
+        model.savedIn = [:]
+        model.collections = store.lists
         popover.present(anchor: anchor)
 
         let profile = store.profile()
@@ -158,6 +172,7 @@ final class SingeController {
                     model.loading = false
                     model.senses = [sense] + model.senses.prefix(3)
                     model.selected = sense.id
+                    self.refreshSaved()
                 }
             }
         }
@@ -176,8 +191,16 @@ final class SingeController {
         model.interests = interests
         if let top = ordered.first {
             store.recordLookup(term: term, sense: top, app: app)
-            model.starred = store.isStarred(term)
         }
+        refreshSaved()
+    }
+
+    /// Which collections hold each meaning on screen; the stars and "Saved in" lines.
+    private func refreshSaved() {
+        let model = popover.model
+        model.collections = store.lists
+        model.savedIn = Dictionary(model.senses.map { ($0.id, store.collections(term: model.term, meaning: $0.name)) },
+                                   uniquingKeysWith: { a, _ in a })
     }
 
     func close() {

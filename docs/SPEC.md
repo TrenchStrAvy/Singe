@@ -51,12 +51,13 @@ words grows from meanings shown (+1) and meanings tapped (+3). Score = Wiktionar
 order prior + affinity to the profile. A meaning chosen before for the same term comes
 first again. Slash-joined terms ("RTS/ITS") are looked up whole and per part.
 
-## History and lists (menu bar)
+## History and collections (menu bar)
 - History grouped by day, with the source app and time; search; sort by Recent, A–Z,
   Most looked up.
-- Saved = starred terms.
-- Lists have a colour; a list's colour is its mark (marks and lists are one system).
-  A term can be in several lists. Filter by colour or by list.
+- Saved = terms with a saved meaning (or starred in History).
+- Collections have no colour. They hold meanings, not just words: the star next to a
+  meaning in the popover files that meaning into one or more collections, or a new one.
+  Opening a collection shows each saved meaning with its definition.
 - Export to Obsidian (Markdown).
 - Open at login (on by default), hold delay, quit.
 

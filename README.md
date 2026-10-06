@@ -43,13 +43,16 @@ pre-approve it with a PPPC device-management profile.
 - **Hold Left ⌃ with text highlighted.** Holding Control with nothing highlighted does nothing.
 - **While holding, clicks inside work:** ★ saves the term; clicking a meaning expands it
   and teaches the ranking which reading you meant.
+- **Click the star next to a meaning** to save that meaning to a collection; the popover
+  stays open while you pick.
 - **Click "Ask a follow-up"** and the popover stays open after you let go (follow-up
   questions are coming soon). `Esc` or a click outside closes it.
 - **⌃-shortcuts and ⌃-click keep working.** Another key or a click during the hold cancels Singe.
 
 The glass-bar icon in the menu bar holds your **History** (by day, with the app you were
-in), **Saved** terms, and **Lists**. A list has a colour, and the colour is its mark: right-click
-a term to put it in one or more lists. Sort by recent, A–Z or most looked up, search, and
+in), **Saved** terms, and **Collections**. Click the star next to a meaning in the popover to
+save that meaning to one or more collections you name (or make a new one right there). Sort by
+recent, A–Z or most looked up, search, and
 **Export to Obsidian** as Markdown.
 
 ## Works in any app

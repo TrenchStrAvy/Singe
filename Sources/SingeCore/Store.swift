@@ -16,28 +16,26 @@ struct TermRecord: Identifiable, Hashable {
     let lists: [Int]
 }
 
+/// A collection you made ("Security+", "Work"). It holds meanings, not just words:
+/// saving "host" as "any computer attached to a network" keeps that meaning.
 struct TermList: Identifiable, Hashable {
     let id: Int
     let name: String
-    let color: String      // one of ListColor.all
     let count: Int
 }
 
-enum ListColor {
-    static let all = ["red", "orange", "yellow", "green", "blue", "purple"]
-    static func nsColor(_ name: String) -> NSColor {
-        switch name {
-        case "red": return .systemRed
-        case "orange": return .systemOrange
-        case "yellow": return .systemYellow
-        case "green": return .systemGreen
-        case "blue": return .systemBlue
-        default: return .systemPurple
-        }
-    }
+/// One saved meaning in a collection.
+struct CollectionItem: Identifiable, Hashable {
+    var id: String { "\(list)|\(key)|\(meaning)" }
+    let list: Int
+    let key: String
+    let term: String
+    let meaning: String
+    let gloss: String
+    let label: String
 }
 
-/// History, saved terms, coloured lists, and the ranking profile. One SQLite file in
+/// History, saved terms, collections, and the ranking profile. One SQLite file in
 /// ~/Library/Application Support/Singe.
 final class Store: ObservableObject {
     static let supportDir: URL = {
@@ -62,12 +60,25 @@ final class Store: ObservableObject {
                 label TEXT NOT NULL, app TEXT NOT NULL, first_seen REAL NOT NULL, last_seen REAL NOT NULL,
                 count INTEGER NOT NULL DEFAULT 1, starred INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS lists (id INTEGER PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL);
-            CREATE TABLE IF NOT EXISTS list_items (list_id INTEGER NOT NULL, key TEXT NOT NULL,
-                PRIMARY KEY (list_id, key));
+            CREATE TABLE IF NOT EXISTS collection_items (list_id INTEGER NOT NULL, key TEXT NOT NULL,
+                term TEXT NOT NULL, meaning TEXT NOT NULL, gloss TEXT NOT NULL, label TEXT NOT NULL,
+                PRIMARY KEY (list_id, key, meaning));
             CREATE TABLE IF NOT EXISTS profile (token TEXT PRIMARY KEY, weight REAL NOT NULL);
             """)
+        migrateLists()
         pruneProfile()
         refresh()
+    }
+
+    /// Lists used to hold whole terms and carry a colour. They are collections of meanings
+    /// now; each term comes across with the meaning it had, and the old table goes.
+    private func migrateLists() {
+        guard !db.query("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'list_items'").isEmpty else { return }
+        db.exec("""
+            INSERT OR IGNORE INTO collection_items (list_id, key, term, meaning, gloss, label)
+            SELECT i.list_id, t.key, t.term, t.meaning, t.gloss, t.label FROM list_items i JOIN terms t ON t.key = i.key
+            """)
+        db.exec("DROP TABLE list_items")
     }
 
     /// Drops filler words learned by earlier versions, so they no longer skew rankings.
@@ -132,34 +143,67 @@ final class Store: ObservableObject {
 
     func delete(_ key: String) {
         db.exec("DELETE FROM terms WHERE key = ?", [key])
-        db.exec("DELETE FROM list_items WHERE key = ?", [key])
+        db.exec("DELETE FROM collection_items WHERE key = ?", [key])
         refresh()
     }
 
-    // MARK: lists (a list has a colour, so marking a term means putting it in a list)
+    // MARK: collections
 
     @discardableResult
-    func createList(name: String, color: String) -> Int {
-        db.exec("INSERT INTO lists (name, color) VALUES (?, ?)", [name, color])
+    func createList(name: String) -> Int {
+        db.exec("INSERT INTO lists (name, color) VALUES (?, '')", [name])   // colour column kept for old files
         let id = Int(db.lastInsertID)
         refresh()
         return id
     }
 
     func deleteList(_ id: Int) {
+        let keys = db.query("SELECT DISTINCT key FROM collection_items WHERE list_id = ?", [id]).compactMap { $0["key"] as? String }
         db.exec("DELETE FROM lists WHERE id = ?", [id])
-        db.exec("DELETE FROM list_items WHERE list_id = ?", [id])
-        refresh()
-    }
-
-    func toggle(_ key: String, in list: Int) {
-        if db.query("SELECT 1 FROM list_items WHERE list_id = ? AND key = ?", [list, key]).isEmpty {
-            db.exec("INSERT INTO list_items VALUES (?, ?)", [list, key])
-        } else {
-            db.exec("DELETE FROM list_items WHERE list_id = ? AND key = ?", [list, key])
+        db.exec("DELETE FROM collection_items WHERE list_id = ?", [id])
+        // its terms leave Saved unless another collection holds them; terms starred on their own stay
+        for key in keys where db.query("SELECT 1 FROM collection_items WHERE key = ?", [key]).isEmpty {
+            db.exec("UPDATE terms SET starred = 0 WHERE key = ?", [key])
         }
         refresh()
     }
+
+    /// Puts this meaning of the term in the collection, or takes it out. A term with any
+    /// saved meaning shows under Saved.
+    func toggle(term: String, meaning: String, gloss: String, label: String, in list: Int) {
+        let key = term.lowercased()
+        if db.query("SELECT 1 FROM collection_items WHERE list_id = ? AND key = ? AND meaning = ?", [list, key, meaning]).isEmpty {
+            db.exec("INSERT INTO collection_items VALUES (?, ?, ?, ?, ?, ?)", [list, key, term, meaning, gloss, label])
+            db.exec("UPDATE terms SET starred = 1 WHERE key = ?", [key])
+        } else {
+            db.exec("DELETE FROM collection_items WHERE list_id = ? AND key = ? AND meaning = ?", [list, key, meaning])
+            if db.query("SELECT 1 FROM collection_items WHERE key = ?", [key]).isEmpty {
+                db.exec("UPDATE terms SET starred = 0 WHERE key = ?", [key])
+            }
+        }
+        refresh()
+    }
+
+    /// The menu's whole-term toggle: the term's current meaning.
+    func toggle(_ key: String, in list: Int) {
+        guard let r = records.first(where: { $0.key == key }) else { return }
+        toggle(term: r.term, meaning: r.meaning, gloss: r.gloss, label: r.label, in: list)
+    }
+
+    /// The collections holding this meaning of the term.
+    func collections(term: String, meaning: String) -> Set<Int> {
+        Set(db.query("SELECT list_id FROM collection_items WHERE key = ? AND meaning = ?", [term.lowercased(), meaning])
+            .compactMap { $0["list_id"] as? Int })
+    }
+
+    func items(in list: Int) -> [CollectionItem] {
+        db.query("SELECT * FROM collection_items WHERE list_id = ? ORDER BY term COLLATE NOCASE", [list]).map { r in
+            CollectionItem(list: list, key: r["key"] as? String ?? "", term: r["term"] as? String ?? "",
+                           meaning: r["meaning"] as? String ?? "", gloss: r["gloss"] as? String ?? "",
+                           label: r["label"] as? String ?? "")
+        }
+    }
+
 
     // MARK: ranking profile
 
@@ -188,7 +232,7 @@ final class Store: ObservableObject {
 
     func refresh() {
         var membership: [String: [Int]] = [:]
-        for row in db.query("SELECT list_id, key FROM list_items") {
+        for row in db.query("SELECT DISTINCT list_id, key FROM collection_items") {
             if let k = row["key"] as? String, let l = row["list_id"] as? Int { membership[k, default: []].append(l) }
         }
         records = db.query("SELECT * FROM terms ORDER BY last_seen DESC").map { r in
@@ -203,11 +247,10 @@ final class Store: ObservableObject {
                 lists: membership[key] ?? [])
         }
         lists = db.query("""
-            SELECT l.id, l.name, l.color, COUNT(i.key) AS n FROM lists l
-            LEFT JOIN list_items i ON i.list_id = l.id GROUP BY l.id ORDER BY l.name COLLATE NOCASE
+            SELECT l.id, l.name, COUNT(i.key) AS n FROM lists l
+            LEFT JOIN collection_items i ON i.list_id = l.id GROUP BY l.id ORDER BY l.name COLLATE NOCASE
             """).map { r in
-            TermList(id: r["id"] as? Int ?? 0, name: r["name"] as? String ?? "",
-                     color: r["color"] as? String ?? "blue", count: r["n"] as? Int ?? 0)
+            TermList(id: r["id"] as? Int ?? 0, name: r["name"] as? String ?? "", count: r["n"] as? Int ?? 0)
         }
     }
 
@@ -222,9 +265,9 @@ final class Store: ObservableObject {
             return "- **\(r.term)**\(star): \(r.meaning). \(r.gloss) _(\(r.label), first looked up \(fmt.string(from: r.firstSeen)))_\n"
         }
         for list in lists {
-            let members = records.filter { $0.lists.contains(list.id) }
+            let members = items(in: list.id)
             guard !members.isEmpty else { continue }
-            md += "\n## \(list.name)\n\n" + members.map(entry).joined()
+            md += "\n## \(list.name)\n\n" + members.map { "- **\($0.term)**: \($0.meaning). \($0.gloss) _(\($0.label))_\n" }.joined()
         }
         let saved = records.filter(\.starred)
         if !saved.isEmpty { md += "\n## Saved\n\n" + saved.map(entry).joined() }

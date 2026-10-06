@@ -31,6 +31,7 @@ struct GlassUniforms {
     var pulse: Float
     var radius: Float
     var calm: Float
+    var edge: Float
     var c1: SIMD3<Float>
     var c2: SIMD3<Float>
     var c3: SIMD3<Float>
@@ -141,16 +142,16 @@ final class GlassRenderer {
     }
 
     static func uniforms(size: CGSize, scale: CGFloat, t: Double, flow: Double, dark: Bool,
-                         pulse: Double, radius: CGFloat, calm: Float) -> GlassUniforms {
+                         pulse: Double, radius: CGFloat, calm: Float, edge: CGFloat = 0) -> GlassUniforms {
         let c = Ribbon.colors()
         return GlassUniforms(res: SIMD2(Float(size.width), Float(size.height)), scale: Float(scale),
                              t: Float(t), flow: Float(flow), dark: dark ? 1 : 0, pulse: Float(pulse),
-                             radius: Float(radius), calm: calm, c1: c[0], c2: c[1], c3: c[2])
+                             radius: Float(radius), calm: calm, edge: Float(edge), c1: c[0], c2: c[1], c3: c[2])
     }
 
     /// Renders one frame offscreen: used for the app icon and the menu bar icon.
     func image(pixelSize: CGSize, scale: CGFloat, t: Double, dark: Bool, radius: CGFloat,
-               calm: Float = 1, pulse: Double = 0, flow: Double? = nil) -> CGImage? {
+               calm: Float = 1, pulse: Double = 0, flow: Double? = nil, edge: CGFloat = 0) -> CGImage? {
         guard let device, let queue, pipeline != nil else { return nil }
         let w = Int(pixelSize.width), h = Int(pixelSize.height)
         let desc = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: w, height: h, mipmapped: false)
@@ -165,7 +166,7 @@ final class GlassRenderer {
         pass.colorAttachments[0].storeAction = .store
         guard let enc = cmd.makeRenderCommandEncoder(descriptor: pass) else { return nil }
         encode(enc, uniforms: Self.uniforms(size: pixelSize, scale: scale, t: t, flow: flow ?? t * 0.9, dark: dark,
-                                            pulse: pulse, radius: radius, calm: calm))
+                                            pulse: pulse, radius: radius, calm: calm, edge: edge))
         enc.endEncoding()
         if let blit = cmd.makeBlitCommandEncoder() { blit.synchronize(resource: tex); blit.endEncoding() }
         cmd.commit()
@@ -187,6 +188,9 @@ final class GlassView: NSView {
     var dark = true
     var calm: Float = 1
     var radius: CGFloat = 8
+    /// Draw only this many points in from the edge (0 = the whole bar): the popover's rim.
+    var edge: CGFloat = 0
+    var fps: Double = 60
     private var pulse = 0.0
     private var flow = Double.random(in: 0...20)
     private let phase = Double.random(in: 0...20)
@@ -226,7 +230,7 @@ final class GlassView: NSView {
         last = CACurrentMediaTime()
         render()
         guard timer == nil else { return }
-        let t = Timer(timeInterval: 1 / 60, repeats: true) { [weak self] _ in self?.render() }
+        let t = Timer(timeInterval: 1 / fps, repeats: true) { [weak self] _ in self?.render() }
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
@@ -246,7 +250,8 @@ final class GlassView: NSView {
         let px = CGSize(width: (bounds.width * scale).rounded(), height: (bounds.height * scale).rounded())
         guard px.width >= 2, px.height >= 2,
               let image = GlassRenderer.shared.image(pixelSize: px, scale: scale, t: now + phase, dark: dark,
-                                                     radius: radius, calm: calm, pulse: pulse, flow: flow + phase)
+                                                     radius: radius, calm: calm, pulse: pulse, flow: flow + phase,
+                                                     edge: edge)
         else { return }
         CATransaction.begin()
         CATransaction.setDisableActions(true)

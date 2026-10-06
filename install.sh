@@ -183,4 +183,4 @@ if [[ -z $existing ]] || $regrant; then
 fi
 print
 print -P "%BUse:%b highlight a term anywhere, then hold %BLeft Control%b. Let go to close."
-print    "  Your history, saved terms and lists live under the glass-bar icon in the menu bar."
+print    "  Your history, saved terms and collections live under the glass-bar icon in the menu bar."

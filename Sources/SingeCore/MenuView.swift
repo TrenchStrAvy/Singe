@@ -1,24 +1,22 @@
 import ServiceManagement
 import SwiftUI
 
-/// The menu bar panel: History, Saved, and your coloured Lists.
+/// The menu bar panel: History, Saved, and your Collections of saved meanings.
 struct MenuView: View {
     @ObservedObject var store: Store
     @ObservedObject var app: AppState
     var onExport: () -> Void
     var onQuit: () -> Void
 
-    enum Tab: String, CaseIterable { case history = "History", saved = "Saved", lists = "Lists" }
+    enum Tab: String, CaseIterable { case history = "History", saved = "Saved", lists = "Collections" }
     enum Sort: String, CaseIterable { case recent = "Recent", alpha = "A–Z", frequent = "Most looked up" }
 
     @State private var tab: Tab = .history
     @State private var sort: Sort = .recent
     @State private var search = ""
-    @State private var colorFilter: String?
     @State private var listFilter: Int?
     @State private var expanded: String?
     @State private var newListName = ""
-    @State private var newListColor = "blue"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -78,14 +76,6 @@ struct MenuView: View {
 
     private var tools: some View {
         HStack(spacing: 7) {
-            Text("Marks").foregroundStyle(.secondary)
-            ForEach(ListColor.all, id: \.self) { c in
-                Circle().fill(Color(nsColor: ListColor.nsColor(c))).frame(width: 9, height: 9)
-                    .overlay(Circle().stroke(Color.primary, lineWidth: colorFilter == c ? 1.5 : 0))
-                    .opacity(colorFilter == nil || colorFilter == c ? 1 : 0.35)
-                    .onTapGesture { colorFilter = colorFilter == c ? nil : c; listFilter = nil }
-                    .help(colorHelp(c))
-            }
             Spacer()
             Menu(sort.rawValue) {
                 ForEach(Sort.allCases, id: \.self) { s in Button(s.rawValue) { sort = s } }
@@ -96,19 +86,9 @@ struct MenuView: View {
         .padding(.horizontal, 12).padding(.bottom, 6)
     }
 
-    private func colorHelp(_ c: String) -> String {
-        let names = store.lists.filter { $0.color == c }.map(\.name)
-        return names.isEmpty ? "No list with this colour yet" : names.joined(separator: ", ")
-    }
-
     private var filtered: [TermRecord] {
         var items = store.records
         if tab == .saved { items = items.filter(\.starred) }
-        if let c = colorFilter {
-            let ids = Set(store.lists.filter { $0.color == c }.map(\.id))
-            items = items.filter { !ids.isDisjoint(with: $0.lists) }
-        }
-        if let l = listFilter { items = items.filter { $0.lists.contains(l) } }
         let q = search.trimmingCharacters(in: .whitespaces).lowercased()
         if !q.isEmpty {
             items = items.filter { $0.term.lowercased().contains(q) || $0.meaning.lowercased().contains(q) || $0.gloss.lowercased().contains(q) }
@@ -123,14 +103,59 @@ struct MenuView: View {
 
     @ViewBuilder private var termList: some View {
         if let l = listFilter, let list = store.lists.first(where: { $0.id == l }) {
-            HStack {
-                Circle().fill(Color(nsColor: ListColor.nsColor(list.color))).frame(width: 9, height: 9)
-                Text(list.name).font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Button("Show all") { listFilter = nil }.buttonStyle(.link).font(.system(size: 11.5))
-            }
-            .padding(.horizontal, 12).padding(.vertical, 4)
+            collectionView(list)
+        } else {
+            records
         }
+    }
+
+    /// One collection: the meanings saved in it, each with its own definition.
+    @ViewBuilder private func collectionView(_ list: TermList) -> some View {
+        HStack {
+            Text(list.name).font(.system(size: 12, weight: .semibold))
+            Spacer()
+            Button("Show all") { listFilter = nil }.buttonStyle(.link).font(.system(size: 11.5))
+        }
+        .padding(.horizontal, 12).padding(.vertical, 4)
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let items = store.items(in: list.id).filter {
+            q.isEmpty || $0.term.lowercased().contains(q) || $0.meaning.lowercased().contains(q) || $0.gloss.lowercased().contains(q)
+        }
+        if items.isEmpty {
+            Text("Nothing saved here yet. Click the star next to a meaning in the popover to save it.")
+                .font(.system(size: 12)).foregroundStyle(.secondary).padding(12)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        ForEach(items) { it in
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 9) {
+                    Image(systemName: "star.fill").font(.system(size: 11))
+                    Text(it.term).font(.system(size: 13, weight: .semibold))
+                    Spacer()
+                    Text(it.label).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Text(it.meaning).font(.system(size: 11.5)).padding(.leading, 20)
+                if expanded == it.id {
+                    Text(it.gloss).font(.system(size: 12)).foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true).padding(.leading, 20)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 5)
+            .contentShape(Rectangle())
+            .onTapGesture { expanded = expanded == it.id ? nil : it.id }
+            .contextMenu {
+                Button("Remove from \(list.name)") {
+                    store.toggle(term: it.term, meaning: it.meaning, gloss: it.gloss, label: it.label, in: list.id)
+                }
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString("\(it.term): \(it.meaning). \(it.gloss)", forType: .string)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var records: some View {
         let items = filtered
         if items.isEmpty {
             Text(store.records.isEmpty
@@ -173,11 +198,6 @@ struct MenuView: View {
                     Text(r.meaning).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 4)
-                HStack(spacing: 3) {
-                    ForEach(store.lists.filter { r.lists.contains($0.id) }) { l in
-                        Circle().fill(Color(nsColor: ListColor.nsColor(l.color))).frame(width: 8, height: 8)
-                    }
-                }
                 Text("\(r.app) · \(time)").font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
             }
             if expanded == r.key {
@@ -191,11 +211,13 @@ struct MenuView: View {
         .onTapGesture { expanded = expanded == r.key ? nil : r.key }
         .contextMenu {
             Button(r.starred ? "Remove from Saved" : "Save") { store.setStarred(r.key, !r.starred) }
-            Menu("Lists") {
+            Menu("Save to Collection") {
                 ForEach(store.lists) { l in
-                    Button((r.lists.contains(l.id) ? "✓ " : "") + l.name) { store.toggle(r.key, in: l.id) }
+                    Button((store.collections(term: r.term, meaning: r.meaning).contains(l.id) ? "✓ " : "") + l.name) {
+                        store.toggle(r.key, in: l.id)
+                    }
                 }
-                if store.lists.isEmpty { Text("Create a list in the Lists tab") }
+                if store.lists.isEmpty { Text("Create one in the Collections tab") }
             }
             Button("Copy") {
                 NSPasteboard.general.clearContents()
@@ -211,32 +233,25 @@ struct MenuView: View {
     @ViewBuilder private var listsPanel: some View {
         ForEach(store.lists) { l in
             HStack(spacing: 9) {
-                Circle().fill(Color(nsColor: ListColor.nsColor(l.color))).frame(width: 9, height: 9)
+                Image(systemName: "folder").font(.system(size: 11)).foregroundStyle(.secondary)
                 Text(l.name).font(.system(size: 13))
                 Spacer()
                 Text("\(l.count)").font(.system(size: 11.5)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 12).padding(.vertical, 7)
             .contentShape(Rectangle())
-            .onTapGesture { listFilter = l.id; colorFilter = nil; tab = .history }
-            .contextMenu { Button("Delete List", role: .destructive) { store.deleteList(l.id) } }
+            .onTapGesture { listFilter = l.id; tab = .history }
+            .contextMenu { Button("Delete Collection", role: .destructive) { store.deleteList(l.id) } }
         }
         VStack(alignment: .leading, spacing: 8) {
-            Text("New list").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
+            Text("New collection").font(.system(size: 11.5, weight: .semibold)).foregroundStyle(.secondary)
             HStack(spacing: 8) {
                 TextField("e.g. DORA", text: $newListName).textFieldStyle(.roundedBorder).font(.system(size: 12))
                     .onSubmit(createList)
                 Button("Create", action: createList).controlSize(.small)
                     .disabled(newListName.trimmingCharacters(in: .whitespaces).isEmpty)
             }
-            HStack(spacing: 8) {
-                ForEach(ListColor.all, id: \.self) { c in
-                    Circle().fill(Color(nsColor: ListColor.nsColor(c))).frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(Color.primary, lineWidth: newListColor == c ? 2 : 0))
-                        .onTapGesture { newListColor = c }
-                }
-            }
-            Text("Right-click a term in History to put it in a list. A list's colour is its mark.")
+            Text("In the popover, click the star next to a meaning to save that meaning to a collection. You can also right-click a term in History.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
@@ -245,7 +260,7 @@ struct MenuView: View {
     private func createList() {
         let name = newListName.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { return }
-        store.createList(name: name, color: newListColor)
+        store.createList(name: name)
         newListName = ""
     }
 

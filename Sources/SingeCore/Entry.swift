@@ -6,6 +6,8 @@ import SwiftUI
 //   Singe --lookup "RTS/ITS"          print the ranked meanings
 //   Singe --render-icon icon.png      render the app icon (1024 px)
 //   Singe --snapshot out.png "TERM"   render the highlight + popover offscreen
+//   Singe --selftest                  read a selected term in real apps, hidden in the background
+//   Singe --probe Safari              what Singe reads in a running app, without bringing it forward
 /// The launcher stays the same across updates, so macOS keeps Singe's Accessibility
 /// permission; everything else lives in this library and can change freely.
 @_cdecl("singe_main")
@@ -26,6 +28,54 @@ public func singeMain() -> Int32 {
             print("  \(n + 1). \(s.name)  [\(s.label) · \(s.source.rawValue)]\n     \(s.gloss)")
         }
         exit(0)
+    }
+
+    // Singe --selftest [--include-running]: read a selected term in real apps, in the background
+    if args.contains("--selftest") {
+        // settings the test learns (which apps need their full accessibility mode) stay out of yours
+        setenv("SINGE_HOME", NSTemporaryDirectory() + "singe-selftest-home-\(getpid())", 1)
+        _ = NSApplication.shared
+        let only = args.firstIndex(of: "--only").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
+            .map { Set($0.lowercased().split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
+        exit(SelfTest.run(includeRunning: args.contains("--include-running"),
+                          visible: args.contains("--visible"), only: only))
+    }
+
+    // Singe --render-menu out.png [--apps]: the menu panel drawn offscreen, never shown
+    if let i = args.firstIndex(of: "--render-menu"), i + 1 < args.count {
+        setenv("SINGE_HOME", NSTemporaryDirectory() + "singe-render-\(getpid())", 1)
+        let app = NSApplication.shared
+        app.setActivationPolicy(.prohibited)
+        let access = AppAccess.shared                   // a few example apps in the throwaway home
+        for (bundle, name, placed) in [("com.apple.TextEdit", "TextEdit", true), ("com.google.Chrome", "Google Chrome", true),
+                                       ("com.apple.Terminal", "Terminal", false)] {
+            for _ in 0..<3 { access.noteLookup(bundle: bundle, name: name, placed: placed) }
+        }
+        access.markDeep(bundle: "com.google.Chrome", name: "Google Chrome")
+        access.noteLookup(bundle: "com.apple.Safari", name: "Safari", placed: true)
+        access.setHighlight(false, for: "com.apple.Safari", apply: false)
+        let state = AppState()
+        state.trusted = true
+        let view = MenuView(store: Store(), app: state, onExport: {}, onQuit: {}, startTab: args.contains("--apps") ? .apps : .history)
+            .frame(width: MenuPanel.width).background(Color.white).environment(\.colorScheme, .light)
+        let host = NSHostingView(rootView: view)
+        host.frame = CGRect(origin: .zero, size: host.fittingSize)
+        let window = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.contentView = host                      // laid out, never ordered on screen
+        RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        if let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) {
+            host.cacheDisplay(in: host.bounds, to: rep)
+            try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: args[i + 1]))
+            print("menu rendered: \(host.bounds.size) → \(args[i + 1])")
+        }
+        exit(0)
+    }
+
+    // Singe --probe <app name | bundle id | pid>: what Singe reads in that app, without bringing it forward
+    if let i = args.firstIndex(of: "--probe"), i + 1 < args.count {
+        _ = NSApplication.shared
+        RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        exit(SelfTest.probe(args[i + 1]))
     }
 
     if let i = args.firstIndex(of: "--render-icon"), i + 1 < args.count {
@@ -99,7 +149,8 @@ public func singeMain() -> Int32 {
         app.setActivationPolicy(.accessory)
         let store = Store(), state = AppState()
         state.trusted = true
-        let panel = MenuPanel(content: MenuView(store: store, app: state, onExport: {}, onQuit: {}, startTab: .lists))
+        let panel = MenuPanel(content: MenuView(store: store, app: state, onExport: {}, onQuit: {},
+                                                startTab: args.contains("--apps") ? .apps : .lists))
         func capture(_ name: String) {
             if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(panel.windowNumber),
                                                   [.boundsIgnoreFraming, .bestResolution]) {

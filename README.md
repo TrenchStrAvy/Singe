@@ -50,7 +50,7 @@ pre-approve it with a PPPC device-management profile.
 - **⌃-shortcuts and ⌃-click keep working.** Another key or a click during the hold cancels Singe.
 
 The glass-bar icon in the menu bar holds your **History** (by day, with the app you were
-in), **Saved** terms, and **Collections**. Click the star next to a meaning in the popover to
+in), **Saved** terms, **Collections**, and **Apps** (the Highlight switch per app). Click the star next to a meaning in the popover to
 save that meaning to one or more collections you name (or make a new one right there). Sort by
 recent, A–Z or most looked up, search, and
 **Export to Obsidian** as Markdown.
@@ -61,7 +61,16 @@ Singe reads the highlighted text through the Accessibility API: native text (Tex
 Notes, Mail, Pages), web text markers (Safari, Chrome, Electron apps such as VS Code,
 Cursor, Obsidian, Slack), and, when an app exposes neither, a ⌘C copy from a private event
 source (so the Control key you are holding is not added) with your clipboard restored.
-`tools/test_apps.py` checks the whole flow in TextEdit, Safari, Chrome, VS Code and Cursor.
+
+The highlight needs the app to say *where* the word is. Most apps do. Some (Chrome) only do
+once their full accessibility mode is on: the first time a lookup in an app comes back
+without a position, Singe turns that mode on, waits for it, and remembers the app needs it.
+No app is special-cased in code. The menu's **Apps** tab lists every app you have used
+Singe in, how often the highlight landed there, and a **Highlight** switch per app: off
+means meanings only, and Singe leaves that app's settings alone. No Screen Recording.
+
+`Singe --selftest` checks this in real apps without taking over your screen; see
+[docs/TESTING.md](docs/TESTING.md).
 
 ## How it finds meanings
 
@@ -89,6 +98,8 @@ swift build -c release                    # the binary
 ./scripts/bundle.sh                       # build/Singe.app with its icon
 .build/release/Singe --lookup "RTS/ITS"   # try the lookup in the terminal
 .build/release/Singe --read-selection 2    # what Singe reads as the selection, after 2 s
+.build/release/Singe --probe Safari        # the same, for a running app, without bringing it forward
+.build/release/Singe --selftest            # real apps, hidden in the background (docs/TESTING.md)
 .build/release/Singe --snapshot out.png "RTS/ITS" --dark   # render highlight + popover
 ```
 

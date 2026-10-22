@@ -92,6 +92,13 @@ final class SingeController {
         }
     }
 
+    /// Where the highlight goes, or nil for meanings only: the app must say where the word is
+    /// (a single line), and its Highlight switch (menu → Apps) must be on.
+    static func highlightRect(for sel: Selection) -> CGRect? {
+        guard let rect = sel.rect, rect.height < 60, AppAccess.shared.highlightAllowed(sel.bundleID) else { return nil }
+        return rect
+    }
+
     func open(_ sel: Selection) {
         let text = TermIndex.normalize(sel.text)
         guard !text.isEmpty, text.count <= 80, text.split(separator: " ").count <= 8 else { return }
@@ -102,7 +109,9 @@ final class SingeController {
         // (pairings ② and ④ in mockups/highlight-contrast).
         let dark = true
         let anchor: CGRect
-        if let rect = sel.rect, rect.height < 60 {
+        let placed = Self.highlightRect(for: sel)
+        AppAccess.shared.noteLookup(bundle: sel.bundleID, name: sel.appName, placed: placed != nil)
+        if let rect = placed {
             highlight.show(text: sel.text.trimmingCharacters(in: .whitespacesAndNewlines), over: rect, font: sel.font, dark: dark)
             anchor = rect.insetBy(dx: -HighlightWindow.padX, dy: -HighlightWindow.padY)
         } else {

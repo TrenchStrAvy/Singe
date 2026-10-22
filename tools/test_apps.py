@@ -2,6 +2,9 @@
 """End-to-end check of Singe across real apps (needs a terminal with Accessibility access
 and pyobjc; Sorph's venv has it).
 
+This one clicks and holds Control for real, so it takes over the screen: run it in a VM or
+CI (docs/TESTING.md). On your own Mac, use `Singe --selftest`, which runs in the background.
+
 For each app: open a file containing one term, select it with ⌘A, then either
   --reader   run `Singe --read-selection` and print what it reads, or
   --hold     simulate holding Left Control and check the lookup landed in a temp history.

@@ -1,15 +1,17 @@
 import ServiceManagement
 import SwiftUI
 
-/// The menu bar panel: History, Saved, and your Collections of saved meanings. Same
+/// The menu bar panel: History, Saved, your Collections of saved meanings, and the Apps
+/// Singe has been used in, each with its Highlight switch. Same
 /// design as the popover (variant B): ink on white glass, the chosen thing on a white card.
 struct MenuView: View {
     @ObservedObject var store: Store
     @ObservedObject var app: AppState
+    @ObservedObject var access = AppAccess.shared
     var onExport: () -> Void
     var onQuit: () -> Void
 
-    enum Tab: String, CaseIterable { case history = "History", saved = "Saved", lists = "Collections" }
+    enum Tab: String, CaseIterable { case history = "History", saved = "Saved", lists = "Collections", apps = "Apps" }
     enum Sort: String, CaseIterable { case recent = "Recent", alpha = "A–Z", frequent = "Most looked up" }
 
     @State private var tab: Tab
@@ -40,12 +42,13 @@ struct MenuView: View {
             if !app.trusted { permissionBanner }
             searchField
             tabBar
-            if tab != .lists { tools }
+            if tab == .history || tab == .saved { tools }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     switch tab {
                     case .history, .saved: records
+                    case .apps: appsPanel
                     case .lists:
                         if let id = openList, let list = store.lists.first(where: { $0.id == id }) {
                             collectionView(list)
@@ -73,7 +76,7 @@ struct MenuView: View {
     private var searchField: some View {
         HStack(spacing: 7) {
             Image(systemName: "magnifyingglass").foregroundStyle(muted)
-            TextField("Search Singed terms", text: $search).textFieldStyle(.plain)
+            TextField(tab == .apps ? "Search apps" : "Search Singed terms", text: $search).textFieldStyle(.plain)
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(muted) }
                     .buttonStyle(.plain)
@@ -361,6 +364,52 @@ struct MenuView: View {
         guard !name.isEmpty else { return }
         store.createList(name: name)
         newListName = ""
+    }
+
+    // MARK: apps
+
+    /// Every app Singe was used in, with how often it could place the highlight there and the
+    /// switch that allows it. Off: meanings only, and Singe leaves that app's settings alone.
+    @ViewBuilder private var appsPanel: some View {
+        Text("Singe highlights the word in apps that say where it is on screen. Some apps only do once their full accessibility mode is on; Singe turns it on for them the first time it is needed. Switch an app off for meanings only.")
+            .font(.system(size: 11.5)).foregroundStyle(muted).fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 10).padding(.top, 2).padding(.bottom, 6)
+        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let apps = access.apps.filter { q.isEmpty || $0.name.lowercased().contains(q) }
+        if apps.isEmpty {
+            emptyNote(access.apps.isEmpty ? "No apps yet. Each app you hold Left ⌃ in appears here." : "No apps match.")
+        }
+        ForEach(apps) { a in
+            HStack(spacing: 10) {
+                appIcon(a.bundle)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(a.name).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(status(a)).font(.system(size: 11)).foregroundStyle(muted).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 6)
+                Toggle("", isOn: Binding(get: { a.highlight }, set: { access.setHighlight($0, for: a.bundle) }))
+                    .toggleStyle(.switch).controlSize(.small).labelsHidden().tint(ink)
+                    .help("Highlight the word in \(a.name)")
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .contextMenu { Button("Forget \(a.name)", role: .destructive) { access.forget(a.bundle) } }
+        }
+    }
+
+    private func status(_ a: AppRecord) -> String {
+        guard a.highlight else { return "Meanings only" }
+        let n = a.lookups == 1 ? "1 lookup" : "\(a.lookups) lookups"
+        if a.lookups == 0 { return a.deep ? "Full accessibility mode on" : "Not used yet" }
+        if a.placed == 0 { return "\(n), none placed: this app does not say where its text is" }
+        let mode = a.deep ? " · full accessibility mode" : ""
+        return "Highlighted \(a.placed) of \(n)\(mode)"
+    }
+
+    private func appIcon(_ bundle: String) -> some View {
+        let icon = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle)
+            .map { NSWorkspace.shared.icon(forFile: $0.path) } ?? NSImage(systemSymbolName: "app", accessibilityDescription: nil)!
+        return Image(nsImage: icon).resizable().frame(width: 22, height: 22)
     }
 
     // MARK: footer

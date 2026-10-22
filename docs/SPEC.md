@@ -30,6 +30,24 @@ DORA text came back as "Religious Trauma Syndrome") and cannot be interacted wit
   pairings in `mockups/highlight-contrast`). Ribbons run calmer behind a term (55 %).
 - Drawn in a click-through window; the original app is untouched. No Screen Recording
   permission is needed.
+- Drawn only where the app says where the selection is (one line, under 60 pt tall) and
+  the app's Highlight switch is on; otherwise the popover points at the text field or the
+  pointer.
+
+## Apps (menu bar, Apps tab)
+- Every app Singe is used in is listed with its icon, lookups, how many placed the
+  highlight, and a **Highlight** switch (on by default).
+- On: Singe asks the app for positions. Electron answers `AXManualAccessibility`. If a
+  lookup comes back without a position, Singe turns on the app's full accessibility mode
+  (`AXEnhancedUserInterface`, VoiceOver's switch) once per launch, waits up to 2 s, and
+  keeps it if the app then reports positions (checked again after 5 s for slow builders
+  such as Chrome 155, which ignores `AXManualAccessibility`). Kept apps get the mode each
+  time they come to the front. Apps that still give nothing go back to normal.
+- Off: meanings only; Singe never changes that app's accessibility settings and turns them
+  back off if it had.
+- The full mode is not sent to apps that do not need it: it can change how an app
+  animates its windows (window managers notice).
+- No app is special-cased in code; the switch is the user's control.
 
 ## Popover (variant B)
 Native macOS popover material and system font; the highlight is the only Sorph element.
@@ -60,6 +78,7 @@ first again. Slash-joined terms ("RTS/ITS") are looked up whole and per part.
   Opening a collection shows each saved meaning with its definition.
 - Export to Obsidian (Markdown).
 - Open at login (on by default), hold delay, quit.
+- Apps: see above.
 
 ## Platform
 Native Swift (AppKit + SwiftUI + Metal), macOS 13+, Intel and Apple Silicon (built on

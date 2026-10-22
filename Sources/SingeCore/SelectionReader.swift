@@ -17,53 +17,154 @@ enum singeLog {
 /// What is highlighted in the frontmost app, and where it sits on screen.
 struct Selection {
     let text: String
-    let rect: CGRect?          // AppKit screen coordinates (bottom-left origin)
+    var rect: CGRect?          // AppKit screen coordinates (bottom-left origin)
     let font: NSFont?
-    let appName: String
+    var appName: String
     /// The text field or page the selection is in, for placing the popover when `rect` is unknown.
     var field: CGRect? = nil
+    var bundleID: String? = nil
+    /// How it was read ("AX range", "text markers", "⌘C" …), for `Singe --probe`.
+    var via: String = ""
 }
 
 /// Reads the highlighted text through the Accessibility API. Web views (Chrome,
 /// Electron, Safari) expose it as a text-marker range; native apps as a plain range.
 /// When neither works, it copies the selection with ⌘C and restores the clipboard.
+///
+/// Whether the highlight can be drawn depends on the app saying *where* the text is.
+/// Most apps do; some (Chrome) only do once their full accessibility mode is on. When a
+/// lookup comes back without a position and the app's Highlight switch is on (menu → Apps),
+/// Singe turns that mode on once, waits for it, and remembers the app needs it. No app is
+/// special-cased in code.
 enum SelectionReader {
-    static func read() -> Selection? {
-        if let sel = readOnce(allowCopy: false) { return sel }
-        // Chrome / Electron may still be building their accessibility tree: try once more.
-        Thread.sleep(forTimeInterval: 0.15)
-        return readOnce(allowCopy: true)
+    /// `app` defaults to the frontmost app. A named app is read without ⌘C, so
+    /// `Singe --probe` can test an app in the background without touching your clipboard.
+    static func read(app target: NSRunningApplication? = nil) -> Selection? {
+        guard let app = target ?? NSWorkspace.shared.frontmostApplication else { return nil }
+        // ⌘C lands in whichever app has focus, so a read aimed at a named app (the self-test,
+        // --probe) never copies: it could land in the app you are working in.
+        let canCopy = target == nil
+        let access = AppAccess.shared
+        let allowed = access.highlightAllowed(app.bundleIdentifier)
+
+        var sel = readOnce(app, allowCopy: false, canCopy: canCopy, wake: allowed)
+        if sel == nil {
+            // the app may still be building its accessibility tree: try once more
+            Thread.sleep(forTimeInterval: 0.15)
+            sel = readOnce(app, allowCopy: false, canCopy: canCopy, wake: allowed)
+        }
+        if sel?.rect != nil, settle(app.processIdentifier) {
+            // the full mode was still being built after the first lookup; it works now
+            access.markDeep(bundle: app.bundleIdentifier, name: app.localizedName ?? "")
+        }
+        // No position: if the highlight is wanted here, turn on the app's full accessibility
+        // mode once and give it a moment to build its tree. Waiting beats a ⌘C, which has no
+        // position and so no highlight.
+        if allowed, sel?.rect == nil, !access.needsDeep(app.bundleIdentifier), firstTry(app.processIdentifier) {
+            let axApp = AXUIElementCreateApplication(app.processIdentifier)
+            AXUIElementSetMessagingTimeout(axApp, 0.3)
+            enableDeep(axApp)
+            for _ in 0..<10 {
+                Thread.sleep(forTimeInterval: 0.2)
+                if let again = readOnce(app, allowCopy: false, canCopy: canCopy, wake: true), again.rect != nil {
+                    singeLog.notice("\(again.appName) reports positions in its full accessibility mode; remembered")
+                    access.markDeep(bundle: app.bundleIdentifier, name: again.appName)
+                    return again
+                }
+            }
+            // Chrome can take several seconds to build its tree the first time: leave the mode on,
+            // look again shortly, and keep it only if the app then says where its text is
+            markPending(app.processIdentifier)
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 5) {
+                guard isPending(app.processIdentifier), !app.isTerminated else { return }
+                let later = readOnce(app, allowCopy: false, canCopy: false, wake: false)
+                if later?.rect != nil, settle(app.processIdentifier) {
+                    access.markDeep(bundle: app.bundleIdentifier, name: app.localizedName ?? "")
+                } else if later != nil, settle(app.processIdentifier) {
+                    singeLog.notice("\(app.localizedName ?? "") gives no positions even in its full accessibility mode")
+                    disableDeep(axApp)          // it did not help; put the app back the way it was
+                }
+                // nothing selected by then: undecided, the next lookup settles it
+            }
+        }
+        return sel ?? readOnce(app, allowCopy: true, canCopy: canCopy, wake: allowed)
+    }
+
+    private static var pending: Set<pid_t> = []
+
+    private static func markPending(_ pid: pid_t) {
+        triedLock.lock(); defer { triedLock.unlock() }
+        pending.insert(pid)
+    }
+
+    private static func isPending(_ pid: pid_t) -> Bool {
+        triedLock.lock(); defer { triedLock.unlock() }
+        return pending.contains(pid)
+    }
+
+    /// True once for a process whose full mode was left on undecided.
+    private static func settle(_ pid: pid_t) -> Bool {
+        triedLock.lock(); defer { triedLock.unlock() }
+        return pending.remove(pid) != nil
+    }
+
+    private static var tried: Set<pid_t> = []
+    private static let triedLock = NSLock()
+
+    /// The full mode is tried once per launch of an app: one that still gives no position
+    /// with it on must not cost a wait on every lookup.
+    private static func firstTry(_ pid: pid_t) -> Bool {
+        triedLock.lock(); defer { triedLock.unlock() }
+        return tried.insert(pid).inserted
     }
 
     /// Chrome, Electron and Safari build their accessibility tree only when asked. Asking
     /// as soon as an app comes to the front means the tree is ready by the time you hold ⌃.
     static func prepare(_ app: NSRunningApplication?) {
-        guard let pid = app?.processIdentifier else { return }
-        let axApp = AXUIElementCreateApplication(pid)
+        guard let app, AppAccess.shared.highlightAllowed(app.bundleIdentifier) else { return }
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, 0.3)
-        enableWebAccessibility(axApp)
+        // an app that is still launching cannot answer yet; ask again for a few seconds
+        for _ in 0..<6 where wakeUp(axApp, app: app) == .cannotComplete {
+            Thread.sleep(forTimeInterval: 1)
+        }
     }
 
-    private static func readOnce(allowCopy: Bool) -> Selection? {
-        let app = NSWorkspace.shared.frontmostApplication
-        let appName = app?.localizedName ?? "Unknown"
-        guard let pid = app?.processIdentifier else { return nil }
-        let axApp = AXUIElementCreateApplication(pid)
+    /// The Highlight switch went off: turn the app's accessibility modes back off.
+    static func release(_ app: NSRunningApplication) {
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
         AXUIElementSetMessagingTimeout(axApp, 0.3)
-        enableWebAccessibility(axApp)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanFalse)
+        disableDeep(axApp)
+    }
+
+    private static func readOnce(_ app: NSRunningApplication, allowCopy: Bool, canCopy: Bool, wake: Bool) -> Selection? {
+        guard var sel = readElements(app, allowCopy: allowCopy, canCopy: canCopy, wake: wake) else { return nil }
+        sel.bundleID = app.bundleIdentifier
+        return sel
+    }
+
+    private static func readElements(_ app: NSRunningApplication, allowCopy: Bool, canCopy: Bool, wake: Bool) -> Selection? {
+        let appName = app.localizedName ?? "Unknown"
+        let axApp = AXUIElementCreateApplication(app.processIdentifier)
+        AXUIElementSetMessagingTimeout(axApp, 0.3)
+        if wake { wakeUp(axApp, app: app) }
+        let forceCopy = ProcessInfo.processInfo.environment["SINGE_FORCE_COPY"] != nil
 
         let systemWide = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(systemWide, 0.3)
+        // the system-wide focus belongs to the frontmost app; only ask it when that is the target
         let focused: AXUIElement? = attribute(axApp, kAXFocusedUIElementAttribute)
-            ?? attribute(systemWide, kAXFocusedUIElementAttribute)
+            ?? (canCopy ? attribute(systemWide, kAXFocusedUIElementAttribute) : nil)
         if focused == nil { singeLog.notice("no focused element in \(appName)") }
-        if let el = focused, ProcessInfo.processInfo.environment["SINGE_FORCE_COPY"] == nil {
+        if let el = focused, !forceCopy {
             if let sel = fromTextMarkers(el, appName: appName) {
                 singeLog.notice("selection via text markers in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
-                return verified(sel)
+                return verified(sel, via: "text markers", canCopy: canCopy)
             }
-            if let sel = fromRange(el, appName: appName) {
+            if var sel = fromRange(el, appName: appName) {
                 singeLog.notice("selection via AX range in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
+                sel.via = "AX range"
                 return sel
             }
             // Web content: the focused element may be a container; try its web area.
@@ -72,27 +173,36 @@ enum SelectionReader {
                 guard let n = node, let parent: AXUIElement = attribute(n, kAXParentAttribute) else { break }
                 if let sel = fromTextMarkers(parent, appName: appName) {
                     singeLog.notice("selection via parent text markers in \(appName)")
-                    return verified(sel)
+                    return verified(sel, via: "parent text markers", canCopy: canCopy)
                 }
                 node = parent
             }
         }
         // Chrome often reports no focused element for a page; find its web area instead.
-        if ProcessInfo.processInfo.environment["SINGE_FORCE_COPY"] == nil {
+        if !forceCopy {
+            let windows: [AXUIElement] = attribute(axApp, kAXWindowsAttribute) ?? []
             let window: AXUIElement? = attribute(axApp, kAXFocusedWindowAttribute) ?? attribute(axApp, kAXMainWindowAttribute)
+                ?? windows.first
             let web = window.flatMap(findWebArea)
             if let web, let sel = fromTextMarkers(web, appName: appName) {
                 singeLog.notice("selection via web area in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
-                return verified(sel)
+                return verified(sel, via: "web area", canCopy: canCopy)
             }
             singeLog.notice("web area search in \(appName): window \(window != nil), web area \(web != nil)")
+            // some apps report no focus, or focus on a toolbar; the text holding the selection is
+            // still in the window
+            if let window, let el = findSelectedText(in: window), var sel = fromRange(el, appName: appName) {
+                singeLog.notice("selection via window search in \(appName): \(sel.text.count) chars, rect \(sel.rect != nil)")
+                sel.via = "AX range (window search)"
+                return sel
+            }
         }
-        let forceCopy = ProcessInfo.processInfo.environment["SINGE_FORCE_COPY"] != nil
-        if !allowCopy && !forceCopy { return nil }
+        // ⌘C goes to the frontmost app, so it is only used when that is the app being read
+        guard canCopy, allowCopy || forceCopy else { return nil }
         if let text = copySelection(), !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             singeLog.notice("selection via ⌘C in \(appName): \(text.count) chars")
             return Selection(text: text, rect: focused.flatMap { checked(caretRect($0), in: $0) }, font: nil,
-                             appName: appName, field: focused.flatMap(fieldFrame))
+                             appName: appName, field: focused.flatMap(fieldFrame), via: "⌘C")
         }
         singeLog.notice("nothing selected in \(appName)")
         return nil
@@ -148,9 +258,26 @@ enum SelectionReader {
         return Selection(text: text, rect: checked(rect, in: el), font: font, appName: appName, field: fieldFrame(el))
     }
 
-    /// Chrome and Electron build their accessibility tree only when asked.
-    private static func enableWebAccessibility(_ axApp: AXUIElement) {
-        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+    /// Asks the app to build its accessibility tree. Electron answers AXManualAccessibility;
+    /// apps that remembered needing it (menu → Apps) also get their full accessibility mode.
+    @discardableResult
+    private static func wakeUp(_ axApp: AXUIElement, app: NSRunningApplication) -> AXError {
+        let manual = AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        guard AppAccess.shared.needsDeep(app.bundleIdentifier) else { return manual }
+        return enableDeep(axApp)
+    }
+
+    /// AXEnhancedUserInterface: the switch VoiceOver uses. Chrome 155 ignores the quieter
+    /// AXManualAccessibility and only builds its page tree for this one (and reports "not
+    /// implemented" while doing so). It can also change how an app animates its windows,
+    /// which is why it is only sent to apps that need it to report positions.
+    @discardableResult
+    private static func enableDeep(_ axApp: AXUIElement) -> AXError {
+        AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+    }
+
+    private static func disableDeep(_ axApp: AXUIElement) {
+        AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanFalse)
     }
 
     private static func fontFrom(_ a: NSAttributedString) -> NSFont? {
@@ -220,12 +347,29 @@ enum SelectionReader {
         return nil
     }
 
+    /// Breadth-first search for a text element with a non-empty selection.
+    private static func findSelectedText(in root: AXUIElement) -> AXUIElement? {
+        var queue: [AXUIElement] = [root]
+        var visited = 0
+        while !queue.isEmpty && visited < 600 {
+            let el = queue.removeFirst()
+            visited += 1
+            if let text: String = attribute(el, kAXSelectedTextAttribute),
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return el }
+            if let kids: [AXUIElement] = attribute(el, kAXChildrenAttribute) { queue += kids }
+        }
+        return nil
+    }
+
     /// Web pages can misreport their selection: text inside an aria-hidden section is missing
     /// from the accessibility tree, so the browser reports the nearest accessible text instead
     /// (on sorph.me, selecting "Get Sorph" reported the footer). When the reported selection
     /// looks implausible (no position, a huge area, or far from the pointer you just selected
     /// with), confirm it with a copy; if the two disagree, the copy is the truth.
-    private static func verified(_ sel: Selection) -> Selection {
+    private static func verified(_ sel: Selection, via: String, canCopy: Bool) -> Selection {
+        var sel = sel
+        sel.via = via
+        guard canCopy else { return sel }
         let mouse = NSEvent.mouseLocation
         var suspicious = true
         if let r = sel.rect {
@@ -237,7 +381,7 @@ enum SelectionReader {
         let a = TermIndex.normalize(copied), b = TermIndex.normalize(sel.text)
         guard !a.isEmpty, a != b else { return sel }
         singeLog.notice("selection reported by accessibility did not match the copy; using the copy (\(a.count) chars)")
-        return Selection(text: copied, rect: nil, font: nil, appName: sel.appName, field: sel.field)
+        return Selection(text: copied, rect: nil, font: nil, appName: sel.appName, field: sel.field, via: "⌘C (\(via) disagreed)")
     }
 
     /// Marks Singe's own synthetic ⌘C so the hold monitor ignores it.

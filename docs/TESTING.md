@@ -78,10 +78,21 @@ commercial tools (Orka, Anka) orchestrate macOS VMs on Mac hardware instead.
 ### Continuous integration
 
 GitHub Actions' macOS runners are macOS VMs with a real GUI session, fresh on every run:
-the same isolation as a local VM with nothing to set up on your Mac. A workflow can build
-Singe, grant Accessibility to the runner (check the current runner image's notes on
-TCC/SIP), and run `--selftest --visible` plus `tools/test_apps.py --hold` on every push.
-Private repositories pay per minute for macOS runners.
+the same isolation as a local VM with nothing to set up on your Mac.
+[`.github/workflows/apps.yml`](../.github/workflows/apps.yml) runs on every push to `main`
+that touches the code, on pull requests, and by hand (Actions → Apps → Run workflow, or
+`gh workflow run apps.yml`). It:
+
+- builds Singe and fetches the term index (cached between runs);
+- grants Accessibility by writing the runner's TCC database (its SIP is off);
+- runs `Singe --selftest --front --include-running`: every test app in turn, brought to
+  the front, so Chrome, Edge and Firefox are covered;
+- runs `tools/test_apps.py --hold`: selects the term and holds the real Left Control key;
+- on failure, uploads a screenshot and Singe's log as the `apps-failure` artifact.
+
+`--front` takes over the screen, which is the point on a runner and the reason never to
+use it on your own Mac. The repository is private, so macOS runner minutes count against
+the account's Actions allowance at the macOS rate.
 
 ## What to use when
 
@@ -89,5 +100,6 @@ Private repositories pay per minute for macOS runners.
 |---|---|
 | ranking, index, glossary | `--lookup` |
 | popover or menu looks | `--snapshot`, `--render-menu` |
-| reading selections, the Apps switches | `--selftest` locally; Chromium apps in a VM or CI |
-| the hold key, the drawn glass | a VM or CI (`tools/test_apps.py --hold`) |
+| reading selections, the Apps switches | `--selftest` locally; Chromium apps in CI (push, or `gh workflow run apps.yml`) |
+| the hold key | CI (`tools/test_apps.py --hold`) or a VM |
+| the drawn glass | a VM with GPU (Apple Silicon) or by eye |

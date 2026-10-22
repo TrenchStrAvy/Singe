@@ -1,0 +1,105 @@
+# Reads a selected term in real apps on a fresh macOS VM with a screen of its own, so the
+# tests that need the front app (Chrome, Edge, Firefox, the real Control hold) run here
+# instead of on your Mac. docs/TESTING.md has the whole picture.
+name: Apps
+
+on:
+  push:
+    branches: [main]
+    paths: ["Sources/**", "Package.swift", "tools/test_apps.py", ".github/workflows/apps.yml"]
+  pull_request:
+    paths: ["Sources/**", "Package.swift", "tools/test_apps.py", ".github/workflows/apps.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: apps-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apps:
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      SINGE_CORE: ${{ github.workspace }}/.build/release/libSingeCore.dylib
+      SINGE_INDEX: ${{ github.workspace }}/build/terms.sqlite
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build
+        run: swift build -c release
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pyobjc
+        run: python -m pip install --quiet pyobjc-framework-Quartz
+
+      - name: Term index (cached)
+        id: index
+        uses: actions/cache@v4
+        with:
+          path: build/terms.sqlite
+          key: terms-index-v1
+
+      - name: Download term index
+        if: steps.index.outputs.cache-hit != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p build
+          gh release download index-v1 -R "$GITHUB_REPOSITORY" -p terms.sqlite.gz -D build
+          gunzip build/terms.sqlite.gz
+
+      # The runner's SIP is off, so Accessibility can be granted by writing the system TCC
+      # database: to Singe, to Python (it posts the Control key), and to every process this
+      # step runs under, since macOS checks the app responsible for the process.
+      - name: Grant Accessibility
+        run: |
+          db="/Library/Application Support/com.apple.TCC/TCC.db"
+          grant() {
+            sudo sqlite3 "$db" "INSERT OR REPLACE INTO access
+              (service, client, client_type, auth_value, auth_reason, auth_version, flags)
+              VALUES ('kTCCServiceAccessibility', '$1', 1, 2, 4, 1, 0);"
+            echo "granted $1"
+          }
+          grant "$PWD/.build/release/Singe"
+          py=$(python -c 'import os, sys; print(os.path.realpath(sys.executable))')
+          grant "$py"
+          app=$(dirname "$(dirname "$py")")/Resources/Python.app/Contents/MacOS/Python
+          [ -e "$app" ] && grant "$app"
+          pid=$$
+          while [ "$pid" -gt 1 ]; do
+            exe=$(ps -o comm= -p "$pid" | sed 's/^-//')
+            [ -n "$exe" ] && [ "${exe#/}" != "$exe" ] && grant "$exe"
+            pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
+          done
+
+      # every app in front in turn: Chromium browsers and Firefox only build their page
+      # tree for the front window
+      - name: Self-test (selection and highlight per app)
+        run: .build/release/Singe --selftest --front --include-running
+
+      # the real thing: select the term, hold Left Control, check the lookup was recorded
+      - name: Hold Control in each app
+        run: |
+          export SINGE_HOME="$RUNNER_TEMP/singe-e2e"
+          mkdir -p "$SINGE_HOME"
+          SINGE_DEBUG=1 .build/release/Singe > "$RUNNER_TEMP/singe.log" 2>&1 &
+          sleep 5
+          cat "$SINGE_HOME/status.json" || true
+          SINGE_HOME="$SINGE_HOME" python tools/test_apps.py --hold
+
+      - name: Screenshot on failure
+        if: failure()
+        run: screencapture -x "$RUNNER_TEMP/screen.png" || true
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: apps-failure
+          path: |
+            ${{ runner.temp }}/screen.png
+            ${{ runner.temp }}/singe.log
+            ${{ runner.temp }}/singe-e2e/status.json
+          if-no-files-found: ignore

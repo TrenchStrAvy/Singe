@@ -30,7 +30,7 @@ public func singeMain() -> Int32 {
         exit(0)
     }
 
-    // Singe --selftest [--include-running]: read a selected term in real apps, in the background
+    // Singe --selftest [--include-running] [--visible] [--front]: read a selected term in real apps, in the background
     if args.contains("--selftest") {
         // settings the test learns (which apps need their full accessibility mode) stay out of yours
         setenv("SINGE_HOME", NSTemporaryDirectory() + "singe-selftest-home-\(getpid())", 1)
@@ -38,7 +38,7 @@ public func singeMain() -> Int32 {
         let only = args.firstIndex(of: "--only").flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil }
             .map { Set($0.lowercased().split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }) }
         exit(SelfTest.run(includeRunning: args.contains("--include-running"),
-                          visible: args.contains("--visible"), only: only))
+                          visible: args.contains("--visible"), front: args.contains("--front"), only: only))
     }
 
     // Singe --render-menu out.png [--apps]: the menu panel drawn offscreen, never shown

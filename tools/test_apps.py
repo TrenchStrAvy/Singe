@@ -134,6 +134,7 @@ def main():
     print()
     for app, ok, detail in results:
         print(f"{'✓' if ok else '✗'} {app:20} {detail}")
+    sys.exit(0 if results and all(ok for _, ok, _ in results) else 1)
 
 
 if __name__ == "__main__":

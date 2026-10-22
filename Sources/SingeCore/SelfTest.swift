@@ -10,6 +10,8 @@ import AppKit
 ///                                         have open (Safari …); it is closed afterwards
 ///     Singe --selftest --visible          also try Chromium/Electron apps behind your windows
 ///                                         (unreliable there: they want to be in front)
+///     Singe --selftest --front            bring each app to the front (a VM or CI only: it
+///                                         takes over the screen), so Chromium apps are tested too
 ///     Singe --selftest --only textedit,"google chrome"
 ///     Singe --probe Safari                read what is selected in a running app, in the background
 enum SelfTest {
@@ -52,7 +54,12 @@ enum SelfTest {
 
     // MARK: --selftest
 
-    static func run(includeRunning: Bool, visible: Bool, only: Set<String>? = nil) -> Int32 {
+    static func run(includeRunning: Bool, visible: Bool, front: Bool = false, only: Set<String>? = nil) -> Int32 {
+        guard AXIsProcessTrusted() else {
+            print("Singe self-test: this process has no Accessibility access, so no app can be read.\n"
+                  + "Run it through /Applications/Singe.app (SINGE_CORE=…), or grant the terminal access.")
+            return 2
+        }
         let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("singe-selftest-\(getpid())")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -62,7 +69,7 @@ enum SelfTest {
         var results: [Result] = []
         for c in cases where only.map({ $0.contains(c.name.lowercased()) }) ?? true {
             guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: c.bundle) else { continue }
-            if c.needsWindow && !visible {
+            if c.needsWindow && !visible && !front {
                 results.append(Result(app: c.name, outcome: "skipped", detail: "must be the front app to build its page tree: test in a VM (docs/TESTING.md)"))
                 continue
             }
@@ -71,7 +78,7 @@ enum SelfTest {
                 results.append(Result(app: c.name, outcome: "skipped", detail: "open in your session (--include-running tests it behind your windows)"))
                 continue
             }
-            let r = test(c, appURL: url, fixture: dir.appendingPathComponent("term.\(c.file)"), dir: dir, wasRunning: running)
+            let r = test(c, appURL: url, fixture: dir.appendingPathComponent("term.\(c.file)"), dir: dir, wasRunning: running, front: front)
             print(String(format: "  %-20@ %-9@ %@", c.name as NSString, r.outcome as NSString, r.detail as NSString))
             results.append(r)
         }
@@ -84,11 +91,12 @@ enum SelfTest {
         return failed == 0 ? 0 : 1
     }
 
-    private static func test(_ c: Case, appURL: URL, fixture: URL, dir: URL, wasRunning: Bool) -> Result {
-        // launch hidden and in the background; a separate instance for isolated browsers
+    private static func test(_ c: Case, appURL: URL, fixture: URL, dir: URL, wasRunning: Bool, front: Bool) -> Result {
+        // launch hidden and in the background (in front with --front); a separate instance
+        // for isolated browsers
         let profile = dir.appendingPathComponent("profile-\(c.bundle)")
-        var args = ["-g"]
-        if !wasRunning && !c.needsWindow { args.append("-j") }   // hidden; only for apps we start
+        var args = front ? [] : ["-g"]
+        if !front && !wasRunning && !c.needsWindow { args.append("-j") }   // hidden; only for apps we start
         if let template = c.isolated {
             try? FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
             // Firefox: no welcome pages in a fresh profile
@@ -120,6 +128,7 @@ enum SelfTest {
         guard let app else { return Result(app: c.name, outcome: "n/a", detail: "did not start") }
         defer { cleanUp(app, c: c, fixture: fixture, wasRunning: wasRunning, profile: profile) }
         guard windowCount(app) > 0 else { return Result(app: c.name, outcome: "n/a", detail: "no window to test (needs a first-run setup?)") }
+        if front { app.activate(options: .activateIgnoringOtherApps) }
 
         SelectionReader.prepare(app)
         Thread.sleep(forTimeInterval: c.file == "html" ? 2.5 : 1)   // pages select the term themselves

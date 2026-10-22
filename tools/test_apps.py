@@ -83,12 +83,12 @@ def click_window_center(app):
 
 def open_app(app, file):
     if file:
-        subprocess.run(["open", "-a", app, f"{TMP}/{file}"], check=False)
+        subprocess.run(["open", "-a", app, f"{TMP}/{file}"], check=False, timeout=30)
     else:
-        subprocess.run(["open", "-a", app], check=False)
+        subprocess.run(["open", "-a", app], check=False, timeout=30)
     time.sleep(6 if app in ("Visual Studio Code", "Cursor") else 2.5)
-    subprocess.run(["osascript", "-e", f'tell application "{app}" to activate'], check=False,
-                   capture_output=True)
+    # bring it forward again without AppleScript, which would wait on an Automation prompt
+    subprocess.run(["open", "-a", app], check=False, timeout=30)
     time.sleep(0.8)
     if app in ("Safari", "Google Chrome"):
         click_window_center(app)
@@ -114,11 +114,12 @@ def main():
             continue
         if file is None:
             continue
+        print(f"… {app}")
         open_app(app, file)
         select_all()
         time.sleep(0.4)
         if mode == "--reader":
-            out = subprocess.run([SINGE, "--read-selection", "0"], capture_output=True, text=True).stdout.strip()
+            out = subprocess.run([SINGE, "--read-selection", "0"], capture_output=True, text=True, timeout=60).stdout.strip()
             ok = f"text: {TERM}" in out
             results.append((app, ok, out.replace("\n", " | ")))
         else:

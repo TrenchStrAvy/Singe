@@ -75,6 +75,15 @@ jobs:
             pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
           done
 
+      # Homebrew-installed browsers still carry the download flag, so macOS would stop each
+      # launch at an "are you sure you want to open it?" dialog
+      - name: Clear download flags on test apps
+        run: |
+          for a in "Google Chrome" "Microsoft Edge" "Brave Browser" "Firefox" "Visual Studio Code" "Cursor"; do
+            [ -d "/Applications/$a.app" ] && sudo xattr -dr com.apple.quarantine "/Applications/$a.app" && echo "cleared $a"
+          done
+          true
+
       # every app in front in turn: Chromium browsers and Firefox only build their page
       # tree for the front window
       - name: Self-test (selection and highlight per app)

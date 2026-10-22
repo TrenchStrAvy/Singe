@@ -258,7 +258,7 @@
         cursorAt(b.x0 - 70, b.y + 30); ibeam.classList.add('shown');
         await tween(520, p => cursorAt(b.x0 - 70 + 68 * p, b.y + 30 - 30 * p));
         await sleep(140);
-        await tween(820, p => { const x = b.x0 - 2 + (b.x1 - b.x0 + 4) * p; cursorAt(x, b.y); sel.style.width = Math.max(0, x - b.x0) + 'px'; }, x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
+        await tween(500, p => { const x = b.x0 - 2 + (b.x1 - b.x0 + 4) * p; cursorAt(x, b.y); sel.style.width = Math.max(0, x - b.x0) + 'px'; }, x => x < .5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
         await sleep(260);
         await tween(380, p => cursorAt(b.x1 + 26 * p, b.y + 46 * p));
       }

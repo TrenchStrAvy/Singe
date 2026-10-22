@@ -88,10 +88,11 @@ jobs:
       # tree for the front window
       - name: Self-test (selection and highlight per app)
         timeout-minutes: 15
-        run: .build/release/Singe --selftest --front --include-running
+        run: SINGE_DEBUG=1 .build/release/Singe --selftest --front --include-running 2> "$RUNNER_TEMP/selftest.log"
 
       # the real thing: select the term, hold Left Control, check the lookup was recorded
       - name: Hold Control in each app
+        if: ${{ !cancelled() }}
         timeout-minutes: 8
         run: |
           export SINGE_HOME="$RUNNER_TEMP/singe-e2e"
@@ -112,5 +113,6 @@ jobs:
           path: |
             ${{ runner.temp }}/screen.png
             ${{ runner.temp }}/singe.log
+            ${{ runner.temp }}/selftest.log
             ${{ runner.temp }}/singe-e2e/status.json
           if-no-files-found: ignore

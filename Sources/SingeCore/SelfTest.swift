@@ -65,6 +65,7 @@ enum SelfTest {
         defer { try? FileManager.default.removeItem(at: dir) }
         writeFixtures(in: dir)
 
+        setvbuf(stdout, nil, _IOLBF, 0)   // show progress as it goes, also in a CI log
         print("Singe self-test: \"\(term)\" selected in each app, read in the background\n")
         var results: [Result] = []
         for c in cases where only.map({ $0.contains(c.name.lowercased()) }) ?? true {
@@ -78,7 +79,9 @@ enum SelfTest {
                 results.append(Result(app: c.name, outcome: "skipped", detail: "open in your session (--include-running tests it behind your windows)"))
                 continue
             }
-            let r = test(c, appURL: url, fixture: dir.appendingPathComponent("term.\(c.file)"), dir: dir, wasRunning: running, front: front)
+            let r = withTimeLimit(c) {
+                test(c, appURL: url, fixture: dir.appendingPathComponent("term.\(c.file)"), dir: dir, wasRunning: running, front: front)
+            }
             print(String(format: "  %-20@ %-9@ %@", c.name as NSString, r.outcome as NSString, r.detail as NSString))
             results.append(r)
         }
@@ -89,6 +92,23 @@ enum SelfTest {
         let passed = results.filter { $0.outcome == "highlight" }.count
         print("\n\(passed) highlighted, \(results.filter { $0.outcome == "text only" }.count) text only, \(failed) failed, \(results.filter { $0.outcome == "skipped" || $0.outcome == "n/a" }.count) skipped")
         return failed == 0 ? 0 : 1
+    }
+
+    /// What the app under test is doing, for the report when it hangs.
+    private static var stage = ""
+
+    /// One app gets 90 s; an app stuck on a first-run dialog or a hung Accessibility call
+    /// fails on its own instead of holding up the rest.
+    private static func withTimeLimit(_ c: Case, _ body: @escaping () -> Result) -> Result {
+        let before = Set(NSRunningApplication.runningApplications(withBundleIdentifier: c.bundle).map(\.processIdentifier))
+        var result: Result?
+        let done = DispatchSemaphore(value: 0)
+        stage = "starting"
+        Thread.detachNewThread { result = body(); done.signal() }
+        if done.wait(timeout: .now() + 90) == .success, let result { return result }
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: c.bundle)
+        where !before.contains(app.processIdentifier) { app.forceTerminate() }
+        return Result(app: c.name, outcome: "FAIL", detail: "timed out after 90 s while \(stage)")
     }
 
     private static func test(_ c: Case, appURL: URL, fixture: URL, dir: URL, wasRunning: Bool, front: Bool) -> Result {
@@ -114,7 +134,9 @@ enum SelfTest {
             args += ["-a", appURL.path, fixture.path]
         }
         let before = Set(NSRunningApplication.runningApplications(withBundleIdentifier: c.bundle).map(\.processIdentifier))
+        stage = "launching"
         shell("/usr/bin/open", args)
+        stage = "waiting for a window"
 
         // the instance under test: the new process, or the one already running
         var app: NSRunningApplication?
@@ -130,11 +152,14 @@ enum SelfTest {
         guard windowCount(app) > 0 else { return Result(app: c.name, outcome: "n/a", detail: "no window to test (needs a first-run setup?)") }
         if front { app.activate(options: .activateIgnoringOtherApps) }
 
+        stage = "switching on its accessibility"
         SelectionReader.prepare(app)
+        stage = "selecting the term"
         Thread.sleep(forTimeInterval: c.file == "html" ? 2.5 : 1)   // pages select the term themselves
         if c.file != "html" && !selectTerm(in: app) {
             return Result(app: c.name, outcome: "n/a", detail: "harness could not select the term in this app")
         }
+        stage = "reading the selection"
         var sel = SelectionReader.read(app: app)
         if SingeController.highlightRect(for: sel ?? Selection(text: "", rect: nil, font: nil, appName: "")) == nil {
             // an app switching on its full accessibility mode can take a few seconds the first
@@ -266,6 +291,7 @@ enum SelfTest {
 
     /// Quits what the test started; in an app you had open, closes only the test window.
     private static func cleanUp(_ app: NSRunningApplication, c: Case, fixture: URL, wasRunning: Bool, profile: URL) {
+        stage = "quitting it"
         if c.isolated != nil || !wasRunning {
             app.terminate()
             let deadline = Date().addingTimeInterval(3)
@@ -297,7 +323,9 @@ enum SelfTest {
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         try? p.run()
-        p.waitUntilExit()
+        let deadline = Date().addingTimeInterval(30)   // `open` waits for the launch
+        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        if p.isRunning { p.terminate(); return -1 }
         return p.terminationStatus
     }
 }

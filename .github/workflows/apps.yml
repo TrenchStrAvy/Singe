@@ -78,17 +78,19 @@ jobs:
       # every app in front in turn: Chromium browsers and Firefox only build their page
       # tree for the front window
       - name: Self-test (selection and highlight per app)
+        timeout-minutes: 15
         run: .build/release/Singe --selftest --front --include-running
 
       # the real thing: select the term, hold Left Control, check the lookup was recorded
       - name: Hold Control in each app
+        timeout-minutes: 8
         run: |
           export SINGE_HOME="$RUNNER_TEMP/singe-e2e"
           mkdir -p "$SINGE_HOME"
           SINGE_DEBUG=1 .build/release/Singe > "$RUNNER_TEMP/singe.log" 2>&1 &
           sleep 5
           cat "$SINGE_HOME/status.json" || true
-          SINGE_HOME="$SINGE_HOME" python tools/test_apps.py --hold
+          SINGE_HOME="$SINGE_HOME" python -u tools/test_apps.py --hold
 
       - name: Screenshot on failure
         if: failure()

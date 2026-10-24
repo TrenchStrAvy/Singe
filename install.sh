@@ -1,7 +1,7 @@
 #!/bin/zsh
 # Singe installer: a smarter Look Up for macOS. Highlight a term, hold Left Control.
 #
-# One command (the repository is private, so it goes through the GitHub CLI):
+# One command:
 #
 #   zsh <(gh api -H "Accept: application/vnd.github.raw" repos/TrenchStrAvy/singe/contents/install.sh)
 #
@@ -60,7 +60,8 @@ if $uninstall; then
   if app=$(installed_app); then rm -rf "$app"; ok "removed $app"; fi
   rm -rf "$support" "$HOME/.singe"
   defaults delete app.singe.Singe 2>/dev/null || true
-  ok "Singe removed. You can also remove it from Privacy & Security → Accessibility."
+  tccutil reset Accessibility app.singe.Singe >/dev/null 2>&1 || true
+  ok "Singe removed, including its Accessibility entry."
   exit 0
 fi
 
@@ -90,7 +91,7 @@ else
       gh repo clone "$repo" "$src" -- --quiet --depth 1
     else
       git clone --quiet --depth 1 "https://github.com/$repo.git" "$src" \
-        || die "could not clone $repo (it is private: install the GitHub CLI and run 'gh auth login')"
+        || die "could not clone $repo"
     fi
   fi
   root=$src
@@ -162,6 +163,10 @@ if [[ -n $existing && $new_hash == "$old_hash" ]] && ! $refresh_icon; then
   ok "kept $dest/Singe.app (unchanged launcher: your Accessibility permission stays)"
 else
   [[ -n $existing ]] && regrant=true
+  # The ad-hoc signature ties the permission to this exact build. An entry left by an
+  # earlier build (also one deleted by hand) still shows as on in System Settings but
+  # no longer applies, so clear it and let macOS ask again.
+  tccutil reset Accessibility app.singe.Singe >/dev/null 2>&1 || true
   rm -rf "$dest/Singe.app"
   cp -R build/Singe.app "$dest/Singe.app"
   xattr -cr "$dest/Singe.app" 2>/dev/null || true
@@ -178,7 +183,6 @@ print
 if [[ -z $existing ]] || $regrant; then
   print -P "%BOnce:%b macOS asks for %BAccessibility%b access. Turn on %BSinge%b in"
   print    "  System Settings → Privacy & Security → Accessibility."
-  $regrant && print "  (The launcher changed in this update, so switch Singe off and on there once.)"
   print    "  Future updates keep the permission."
 fi
 print

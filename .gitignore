@@ -4,3 +4,4 @@ build/
 *.sqlite.gz
 .DS_Store
 .swiftpm/
+.vercel

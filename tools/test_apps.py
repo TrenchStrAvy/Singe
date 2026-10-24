@@ -75,19 +75,6 @@ def prepare():
         "pick(); setTimeout(pick, 1000); setTimeout(pick, 2000);</script></body></html>")
 
 
-def click_window_center(app):
-    """Browsers open with the address bar focused; click the page first."""
-    wins = Q.CGWindowListCopyWindowInfo(Q.kCGWindowListOptionOnScreenOnly, Q.kCGNullWindowID)
-    for w in wins:
-        if w.get("kCGWindowOwnerName") == app and w.get("kCGWindowLayer") == 0:
-            b = w["kCGWindowBounds"]
-            p = (b["X"] + b["Width"] / 2, b["Y"] + b["Height"] / 2)
-            for t in (Q.kCGEventLeftMouseDown, Q.kCGEventLeftMouseUp):
-                Q.CGEventPost(Q.kCGHIDEventTap, Q.CGEventCreateMouseEvent(src, t, p, Q.kCGMouseButtonLeft))
-            time.sleep(0.3)
-            return
-
-
 def open_app(app, file):
     if file:
         subprocess.run(["open", "-a", app, f"{TMP}/{file}"], check=False, timeout=30)
@@ -97,8 +84,6 @@ def open_app(app, file):
     # bring it forward again without AppleScript, which would wait on an Automation prompt
     subprocess.run(["open", "-a", app], check=False, timeout=30)
     time.sleep(0.8)
-    if app in ("Safari", "Google Chrome"):
-        click_window_center(app)
 
 
 def history_terms(home):

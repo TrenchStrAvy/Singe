@@ -66,7 +66,13 @@ def prepare():
     os.makedirs(TMP, exist_ok=True)
     open(f"{TMP}/term.txt", "w").write(TERM)
     open(f"{TMP}/term.md", "w").write(TERM)
-    open(f"{TMP}/term.html", "w").write(f"<html><body style='font:24px sans-serif'><p>{TERM}</p></body></html>")
+    # the page selects the term itself (a synthetic click doesn't always reach Safari's page),
+    # and again a moment later, once the browser's accessibility is up
+    open(f"{TMP}/term.html", "w").write(
+        f"<html><body style='font:24px sans-serif'><p id='t'>{TERM}</p><script>"
+        "function pick() { const r = document.createRange(); r.selectNodeContents(document.getElementById('t'));"
+        " getSelection().removeAllRanges(); getSelection().addRange(r); }"
+        "pick(); setTimeout(pick, 1000); setTimeout(pick, 2000);</script></body></html>")
 
 
 def click_window_center(app):
@@ -117,7 +123,8 @@ def main():
             continue
         print(f"… {app}")
         open_app(app, file)
-        select_all()
+        if not file.endswith(".html"):
+            select_all()
         time.sleep(0.4)
         if mode == "--reader":
             out = subprocess.run([SINGE, "--read-selection", "0"], capture_output=True, text=True, timeout=60).stdout.strip()

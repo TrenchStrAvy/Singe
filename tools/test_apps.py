@@ -25,6 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SINGE = os.path.join(ROOT, ".build/release/Singe")
 TMP = "/tmp/singe-apps"
 TERM = "TLPT"
+HOLDS = 4
 
 APPS = [
     ("TextEdit", "term.txt"),
@@ -123,12 +124,19 @@ def main():
             ok = f"text: {TERM}" in out
             results.append((app, ok, out.replace("\n", " | ")))
         else:
+            # A browser just opened can take several seconds to build its page tree for Singe
+            # (Chrome switches on its full accessibility mode on the first lookup), so a miss
+            # is retried like a person would; the report says how many holds it took.
             before = len(history_terms(home))
-            hold_left_control(1.2)
-            time.sleep(0.5)
-            terms = history_terms(home)
-            ok = len(terms) > before or (terms and terms[0] == TERM)
-            results.append((app, ok, f"history: {terms[:3]}"))
+            for attempt in range(1, HOLDS + 1):
+                hold_left_control(1.2)
+                time.sleep(0.5)
+                terms = history_terms(home)
+                ok = len(terms) > before or bool(terms and terms[0] == TERM)
+                if ok:
+                    break
+                time.sleep(2.5)
+            results.append((app, ok, f"history: {terms[:3]}, {attempt} hold{'s' if attempt > 1 else ''}"))
             # forget it so the next app counts as a new lookup
             if terms:
                 sqlite3.connect(os.path.join(home, "history.sqlite")).execute("DELETE FROM terms").connection.commit()

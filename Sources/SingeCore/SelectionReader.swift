@@ -189,6 +189,7 @@ enum SelectionReader {
                 return verified(sel, via: "web area", canCopy: canCopy)
             }
             singeLog.notice("web area search in \(appName): window \(window != nil), web area \(web != nil)")
+            if let web, ProcessInfo.processInfo.environment["SINGE_DEBUG"] != nil { describeWebArea(web, appName: appName) }
             // some apps report no focus, or focus on a toolbar; the text holding the selection is
             // still in the window
             if let window, let el = findSelectedText(in: window), var sel = fromRange(el, appName: appName) {
@@ -256,6 +257,18 @@ enum SelectionReader {
             font = fontFrom(a)
         }
         return Selection(text: text, rect: checked(rect, in: el), font: font, appName: appName, field: fieldFrame(el))
+    }
+
+    /// Debug only: why a web area gave no selection (which attributes it offers, what the
+    /// selected-marker call answered), for browsers that read differently from Safari and Chrome.
+    private static func describeWebArea(_ web: AXUIElement, appName: String) {
+        var names: CFArray?
+        AXUIElementCopyAttributeNames(web, &names)
+        var marker: CFTypeRef?
+        let err = AXUIElementCopyAttributeValue(web, "AXSelectedTextMarkerRange" as CFString, &marker)
+        let selected: String = attribute(web, kAXSelectedTextAttribute) ?? "-"
+        singeLog.notice("web area in \(appName): AXSelectedTextMarkerRange \(err.rawValue), selected text \"\(selected.prefix(40))\", "
+                        + "attributes \((names as? [String] ?? []).joined(separator: " "))")
     }
 
     /// Asks the app to build its accessibility tree. Electron answers AXManualAccessibility;

@@ -119,12 +119,14 @@ enum SelfTest {
         if !front && !wasRunning && !c.needsWindow { args.append("-j") }   // hidden; only for apps we start
         if let template = c.isolated {
             try? FileManager.default.createDirectory(at: profile, withIntermediateDirectories: true)
-            // Firefox: no welcome pages in a fresh profile
+            // Firefox: no welcome pages in a fresh profile, and its accessibility on from the
+            // start (-1 forces it on; it otherwise waits to notice an assistive app)
             try? """
                 user_pref("browser.aboutwelcome.enabled", false);
                 user_pref("datareporting.policy.dataSubmissionPolicyBypassNotification", true);
                 user_pref("browser.startup.homepage_override.mstone", "ignore");
                 user_pref("browser.shell.checkDefaultBrowser", false);
+                user_pref("accessibility.force_disabled", -1);
                 """.write(to: profile.appendingPathComponent("user.js"), atomically: true, encoding: .utf8)
             args += ["-n", "-a", appURL.path, "--args"] + template.map {
                 $0.replacingOccurrences(of: "{profile}", with: profile.path)

@@ -223,8 +223,10 @@ enum SelfTest {
         write("term.html", """
             <html><body style="font:18px -apple-system,sans-serif;padding:60px">
             <p>Configure <span id="t">\(term)</span> on the domain controller before RADIUS.</p>
-            <script>const r = document.createRange(); r.selectNodeContents(document.getElementById('t'));
-            getSelection().removeAllRanges(); getSelection().addRange(r);</script></body></html>
+            <script>function pick() { const r = document.createRange(); r.selectNodeContents(document.getElementById('t'));
+            getSelection().removeAllRanges(); getSelection().addRange(r); }
+            // again once the browser's accessibility is up: Firefox misses a selection made before
+            pick(); setTimeout(pick, 1000); setTimeout(pick, 2000);</script></body></html>
             """)
         // a one-page PDF with the sentence as real text
         let data = NSMutableData()

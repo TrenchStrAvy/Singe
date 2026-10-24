@@ -345,17 +345,24 @@ enum SelectionReader {
     private static let notPage: Set<String> = ["AXToolbar", "AXTabGroup", "AXMenuBar", "AXMenu", "AXButton",
                                                 "AXPopUpButton", "AXMenuButton", "AXTextField", "AXRadioButton"]
 
+    /// Those parts are searched last rather than skipped: Safari keeps the page itself inside
+    /// an AXTabGroup.
     private static func findWebArea(in root: AXUIElement) -> AXUIElement? {
         var queue: [(AXUIElement, Int)] = [(root, 0)]
+        var later: [(AXUIElement, Int)] = []
         var visited = 0
-        while !queue.isEmpty && visited < 600 {
+        while visited < 600 {
+            if queue.isEmpty { if later.isEmpty { break }; queue = later; later = [] }
             let (el, depth) = queue.removeFirst()
             visited += 1
             let role: String? = attribute(el, kAXRoleAttribute)
             if role == "AXWebArea" { return el }
-            if let role, notPage.contains(role) { continue }
             guard depth < 12, let kids: [AXUIElement] = attribute(el, kAXChildrenAttribute) else { continue }
-            queue.append(contentsOf: kids.map { ($0, depth + 1) })
+            if let role, notPage.contains(role) {
+                later.append(contentsOf: kids.map { ($0, depth + 1) })
+            } else {
+                queue.append(contentsOf: kids.map { ($0, depth + 1) })
+            }
         }
         return nil
     }

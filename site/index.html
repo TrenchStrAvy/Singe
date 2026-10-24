@@ -24,7 +24,7 @@
   html::-webkit-scrollbar { display: none; }
 
   /* ---------- hero: pinned; scroll progress drives the evaporation, as on sorph.me */
-  .hero { height: 440vh; position: relative; }
+  .hero { height: 600vh; position: relative; }
   .hero .pin { position: sticky; top: 0; height: 100vh; overflow: hidden; }
   .stage { position: absolute; inset: 0; }
   .evap { will-change: transform, opacity, filter; }
@@ -69,11 +69,11 @@
   /* backwards, not both: a lingering opacity animation would cut the backdrop blur off from the page */
   .pop.open { opacity: 1; visibility: visible; transform: none; transition: none; animation: open .5s cubic-bezier(.2,1.4,.35,1) backwards; }
   @keyframes open { from { opacity: 0; transform: scale(.94) translateY(8px); } }
-  .pop > svg { position: absolute; overflow: visible; pointer-events: none; inset: -60px; width: calc(100% + 120px); height: calc(100% + 120px); }
-  .pop .shadow { filter: blur(20px); fill: rgba(20,22,40,.2); transform: translate(60px, 72px); }
   .pop .glass { position: relative; background: rgba(255,255,255,.9); padding-bottom: 8px; }
   .pop .frost { position: absolute; left: 0; top: 0; backdrop-filter: blur(10px) saturate(170%); -webkit-backdrop-filter: blur(10px) saturate(170%); }
-  .pop .frost.body { border-radius: 14px; }
+  /* the shadow is a box-shadow: a blurred SVG path got cut off in a straight grey line below
+     the popover (Safari limits an SVG element's blur to a box barely larger than the shape) */
+  .pop .frost.body { border-radius: 14px; box-shadow: 0 12px 40px rgba(20,22,40,.2); }
   .pop .frost.tip { transform: rotate(45deg); border-radius: 1.5px; }
   .pop canvas.rim { position: absolute; pointer-events: none; }
   .head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 8px; }
@@ -101,6 +101,38 @@
   .about .text .glassword { position: relative; display: inline-block; padding: 0 .22em; margin: 0 -.05em; color: #fff; }
   .about .text .glassword canvas { position: absolute; inset: 0; width: 100%; height: 100%; filter: drop-shadow(0 4px 10px rgba(20,22,40,.18)); }
   .about .text .glassword span { position: relative; }
+
+  /* ---------- history: the menu bar panel, as in MenuView.swift */
+  .hist { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; visibility: hidden; }
+  .hcol { width: min(720px, 100% - 40px); display: grid; justify-items: center; gap: clamp(16px, 3vh, 28px); will-change: transform, opacity, filter; }
+  .hcap { margin: 0; text-align: center; font-family: Sora, sans-serif; font-weight: 500; font-size: clamp(22px, 3.2vw, 38px); line-height: 1.25; letter-spacing: -0.015em; text-wrap: balance; }
+  .hsmall { margin: 0; max-width: 560px; text-align: center; color: var(--muted); font-size: clamp(14px, 1.5vw, 17px); line-height: 1.5; text-wrap: balance; }
+  .panel { position: relative; width: min(360px, 100vw - 32px); color: var(--deep); text-align: left; }
+  .panel .pglass { position: relative; border-radius: 14px; background: rgba(255,255,255,.92); padding: 12px 0 6px;
+    box-shadow: 0 12px 40px rgba(20,22,40,.16); }
+  .panel canvas.prim { position: absolute; pointer-events: none; }
+  .psearch { margin: 0 12px; display: flex; align-items: center; gap: 7px; height: 32px; padding: 0 11px; border: 1px solid rgba(0,0,0,.08); border-radius: 999px; background: #fff; color: var(--faint); font-size: 13px; }
+  .psearch svg { width: 13px; height: 13px; }
+  .ptabs { margin: 9px 12px 6px; display: grid; grid-template-columns: repeat(4, 1fr); padding: 3px; border-radius: 11px; background: rgba(0,0,0,.045); font-size: 12px; font-weight: 600; color: var(--faint); text-align: center; }
+  .ptabs span { padding: 5px 0; border-radius: 8px; }
+  .ptabs .on { background: #fff; color: var(--deep); box-shadow: 0 1px 3px rgba(20,22,40,.1); }
+  .ptools { display: flex; justify-content: space-between; padding: 0 18px 2px; font-size: 11.5px; color: var(--faint); }
+  .ptools b { font-weight: 500; color: var(--deep); }
+  .prows { height: 348px; overflow: hidden; padding: 0 8px; -webkit-mask-image: linear-gradient(#000 90%, transparent); mask-image: linear-gradient(#000 90%, transparent); }
+  .phead { display: flex; align-items: center; gap: 5px; padding: 8px 10px 2px; font-size: 10.5px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+  .phead svg { width: 8px; height: 8px; transition: transform .35s var(--flow); }
+  .phead.open svg { transform: rotate(90deg); }
+  .phead i { font-style: normal; font-weight: 400; opacity: .75; }
+  .pgroup { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .45s var(--flow), opacity .35s; opacity: 0; }
+  .pgroup.open { grid-template-rows: 1fr; opacity: 1; }
+  .pgroup > div { overflow: hidden; }
+  .prow { display: flex; align-items: center; gap: 9px; padding: 6px 10px; }
+  .prow .pstar { flex: none; width: 12px; height: 12px; color: var(--faint); }
+  .prow .pstar.on { color: var(--deep); }
+  .prow .pt { flex: 1; min-width: 0; }
+  .prow .pt b { display: block; font-size: 13px; font-weight: 700; }
+  .prow .pt span { display: block; font-size: 11.5px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow small { flex: none; font-size: 10.5px; color: var(--faint); }
 
   /* ---------- get it: materialises under the text in the last phase */
   .get { margin-top: clamp(40px, 8vh, 80px); will-change: transform, opacity, filter; opacity: 0; }
@@ -139,7 +171,6 @@
         <path d="M2.5 2h3.2c.9 0 1.5.3 1.8.8.3-.5.9-.8 1.8-.8h3.2M2.5 28h3.2c.9 0 1.5-.3 1.8-.8.3.5.9.8 1.8.8h3.2M7.5 3v24" fill="none" stroke="#111318" stroke-width="1.5" stroke-linecap="round"/>
       </svg>
       <div class="pop" id="pop" aria-live="polite">
-        <svg aria-hidden="true"><path class="shadow" transform="translate(60 60)"/></svg>
         <div class="frost body"></div><div class="frost tip"></div>
         <div class="glass" id="glass">
           <div class="head"><h3 id="popTerm"></h3><small id="popNote"></small></div>
@@ -172,6 +203,21 @@
           <a class="quiet" href="https://github.com/TrenchStrAvy/Singe/releases" target="_blank" rel="noopener">Releases</a>
         </div>
       </div>
+      </div>
+    </div>
+    <div class="hist" id="hist">
+      <div class="hcol" id="hcol">
+        <p class="hcap">Every term you Singe, kept in order.</p>
+        <div class="panel" id="panel" role="img" aria-label="Singe's History panel: terms grouped by Today, Yesterday and This week, older months folded, and an Archive">
+          <div class="pglass">
+            <div class="psearch"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>Search Singed terms</div>
+            <div class="ptabs"><span class="on">History</span><span>Saved</span><span>Collections</span><span>Apps</span></div>
+            <div class="ptools"><span id="pcount"></span><b>Recent ⌄</b></div>
+            <div class="prows" id="prows"></div>
+          </div>
+          <canvas class="prim" aria-hidden="true"></canvas>
+        </div>
+        <p class="hsmall">Today, Yesterday, This week and This month stay open; older months fold away. A term you looked up once and never saved moves to the Archive after 30 days. Search still finds all of it.</p>
       </div>
     </div>
     <footer id="footer">Singe · singe.it · MIT licensed · definitions from Wiktionary, CC BY-SA 4.0</footer>
@@ -407,7 +453,6 @@ void main() {
     lastKey = k;
     const d = shape(0, 0, w, h, ax, ARROW, RADIUS);
     glass.style.clipPath = `path("${d}")`;
-    pop.querySelector('path.shadow').setAttribute('d', d);
     Object.assign(pop.querySelector('.frost.body').style, { width: w + 'px', height: h - ARROW + 'px' });
     const side = ARROW * Math.SQRT2;
     Object.assign(pop.querySelector('.frost.tip').style, { width: side + 'px', height: side + 'px', left: Math.min(Math.max(ax, RADIUS + ARROW), w - RADIUS - ARROW) - side / 2 + 'px', top: h - ARROW - side / 2 + 'px' });
@@ -432,17 +477,68 @@ void main() {
   requestAnimationFrame(frame);
   cycle();
 
+  // ---------- history: rows dated relative to today, so the panel never looks stale
+  const DAY = 864e5, now = Date.now();
+  const short = d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const month = back => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - back); return d.toLocaleDateString('en-US', { month: 'long' }); };
+  const CHEV = '<svg viewBox="0 0 8 8"><path d="M2.5 1l3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const PSTAR = on => `<svg class="pstar${on ? ' on' : ''}" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z" fill="${on ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>`;
+  const GROUPS = [
+    { t: 'Today', open: true, rows: [['Cache', 'Fast storage that keeps copies of recently used data', 'Google Chrome · 2:14 PM', 1], ['Hosts', 'Any computer attached to a network', 'alfaview · 9:40 AM']] },
+    { t: 'Yesterday', open: true, rows: [['RTS', 'Regulatory Technical Standards', 'Safari · 10:21 AM', 1]] },
+    { t: 'This week', open: true, rows: [['Latency', 'The delay between a request and its response', 'Google Chrome · ' + short(now - 3 * DAY)]] },
+    { t: month(1), open: false, n: 2, rows: [['Idempotent', 'Giving the same result however often it is applied', 'Google Chrome · ' + short(now - 34 * DAY)], ['Sharding', 'Splitting a database across several servers', 'Safari · ' + short(now - 38 * DAY)]] },
+    { t: month(2), open: false, n: 9, rows: [] },
+    { t: 'Archive', open: false, n: 23, rows: [] },
+  ];
+  const prows = document.getElementById('prows');
+  prows.innerHTML = GROUPS.map((g, i) => `
+    <div class="phead${g.open ? ' open' : ''}" data-g="${i}">${CHEV}${esc(g.t)} <i>${g.n || g.rows.length}</i></div>
+    <div class="pgroup${g.open ? ' open' : ''}" data-g="${i}"><div>${g.rows.map(([t, m, a, on]) => `
+      <div class="prow">${PSTAR(on)}<div class="pt"><b>${esc(t)}</b><span>${esc(m)}</span></div><small>${esc(a)}</small></div>`).join('')}</div></div>`).join('');
+  document.getElementById('pcount').textContent = GROUPS.reduce((n, g) => n + (g.n || g.rows.length), 0) + ' terms';
+  // the older month unfolds and folds again while the panel is in view
+  const foldHead = prows.querySelector('.phead[data-g="3"]'), foldBody = prows.querySelector('.pgroup[data-g="3"]');
+  setInterval(() => {
+    if (!window.__histShown || reduce) return;
+    foldHead.classList.toggle('open'); foldBody.classList.toggle('open');
+  }, 2600);
+
+  const panel = document.getElementById('panel'), pglass = panel.querySelector('.pglass');
+  const primCanvas = panel.querySelector('canvas.prim'), drawPanelRim = glassRenderer(primCanvas, 18);
+  const rrect = (x, y, w, h, r) => `M${x + r} ${y}H${x + w - r}A${r} ${r} 0 0 1 ${x + w} ${y + r}V${y + h - r}A${r} ${r} 0 0 1 ${x + w - r} ${y + h}H${x + r}A${r} ${r} 0 0 1 ${x} ${y + h - r}V${y + r}A${r} ${r} 0 0 1 ${x + r} ${y}Z`;
+  let panelKey = '';
+  function placePanelRim() {
+    const w = pglass.offsetWidth, h = pglass.offsetHeight, k = w + ':' + h;
+    if (k === panelKey) return;
+    panelKey = k;
+    Object.assign(primCanvas.style, { left: -OUT + 'px', top: -OUT + 'px', width: w + 2 * OUT + 'px', height: h + 2 * OUT + 'px' });
+    const o = RIM / 2;
+    primCanvas.style.clipPath = `path(evenodd, "${rrect(OUT - o, OUT - o, w + 2 * o, h + 2 * o, RADIUS + o)} ${rrect(OUT + o, OUT + o, w - 2 * o, h - 2 * o, RADIUS - o)}")`;
+  }
+  (function rimFrame(nowT) {
+    if (window.__histShown) { placePanelRim(); drawPanelRim(((nowT - born) / 1000) % 628.3, 0.1, RADIUS + OUT); }
+    requestAnimationFrame(rimFrame);
+  })(performance.now());
+
   // ---------- scroll: hero evaporates upward, about condenses from below
   const hero = document.getElementById('hero'), mark = document.getElementById('mark');
   const aboutPs = Array.from(document.querySelectorAll('#text p'));
   const column = document.getElementById('column'), get = document.getElementById('get');
   const footer = document.getElementById('footer'), text = document.getElementById('text');
   const ease = x => x < 0 ? 0 : x > 1 ? 1 : x * x * (3 - 2 * x);
+  const hist = document.getElementById('hist'), hcol = document.getElementById('hcol');
+  // one scene after another: the word, the about text, the history panel, then Get Singe
+  function fade(el, c, dy, blur) {   // c: 0 hidden … 1 shown; dy: where it comes from or goes to
+    el.style.opacity = String(c);
+    el.style.transform = `translateY(${(1 - c) * dy}px)`;
+    el.style.filter = c < 1 ? `blur(${(1 - c) * blur}px)` : '';
+  }
   function render() {
     const range = hero.offsetHeight - innerHeight;
     const p = Math.max(0, Math.min(1, scrollY / range));
-    // phase 1 (0 → 0.20): the word and its meanings evaporate upward
-    const e = ease(p / 0.20);
+    // 0 → 0.14: the word and its meanings evaporate upward
+    const e = ease(p / 0.14);
     stage.style.opacity = String(1 - e);
     stage.style.transform = `translateY(${-e * 160}px) scale(${1 + e * 0.05})`;
     stage.style.filter = e > 0 ? `blur(${e * 12}px)` : '';
@@ -451,33 +547,35 @@ void main() {
     mark.style.filter = e > 0 ? `blur(${e * 12}px)` : '';
     stage.style.visibility = e >= 1 ? 'hidden' : 'visible';
     window.__heroHidden = e >= 1;
-    // phase 2 (0.17 → 0.42): the about text condenses, line by line, from below
-    aboutPs.forEach((el, i) => {
-      const c = ease((p - 0.17 - i * 0.055) / 0.19);
-      el.style.opacity = String(c);
-      el.style.transform = `translateY(${(1 - c) * 90}px)`;
-      el.style.filter = `blur(${(1 - c) * 12}px)`;
-    });
-    // phase 3 (0.44 → 0.64): the text settles higher and the download block materialises under it
-    const g = ease((p - 0.44) / 0.20);
-    const getH = get.offsetHeight + parseFloat(getComputedStyle(get).marginTop);
-    get.style.opacity = String(g);
-    get.style.transform = `translateY(${(1 - g) * 80}px)`;
-    get.style.filter = `blur(${(1 - g) * 12}px)`;
-    // phase 4 (0.68 → 0.84): the text evaporates upward; the download block stays and drifts to the centre
-    const v = ease((p - 0.68) / 0.16);
+    // 0.12 → 0.33: the about text condenses, line by line, from below
+    aboutPs.forEach((el, i) => fade(el, ease((p - 0.12 - i * 0.04) / 0.13), 90, 12));
+    // 0.40 → 0.48: it evaporates upward
+    const v = ease((p - 0.40) / 0.08);
     if (v > 0) {
       text.style.opacity = String(1 - v);
       text.style.transform = `translateY(${-v * 120}px)`;
       text.style.filter = `blur(${v * 12}px)`;
     } else { text.style.opacity = ''; text.style.transform = ''; text.style.filter = ''; }
     text.style.visibility = v >= 1 ? 'hidden' : 'visible';
-    window.__aboutShown = p > 0.15 && v < 1;
+    window.__aboutShown = p > 0.1 && v < 1;
+    // 0.46 → 0.56: the history panel condenses from below; 0.68 → 0.76: it evaporates upward
+    const hin = ease((p - 0.46) / 0.10), hout = ease((p - 0.68) / 0.08);
+    if (hout > 0) {
+      hcol.style.opacity = String(1 - hout);
+      hcol.style.transform = `translateY(${-hout * 120}px)`;
+      hcol.style.filter = `blur(${hout * 12}px)`;
+    } else fade(hcol, hin, 90, 12);
+    hist.style.visibility = hin > 0 && hout < 1 ? 'visible' : 'hidden';
+    window.__histShown = hin > 0 && hout < 1;
+    // 0.74 → 0.86: Get Singe condenses in the middle, where the text was
+    const g = ease((p - 0.74) / 0.12);
+    fade(get, g, 80, 12);
+    const getH = get.offsetHeight + parseFloat(getComputedStyle(get).marginTop);
     const getCentre = get.offsetTop + get.offsetHeight / 2 - column.offsetHeight / 2;
-    column.style.transform = `translateY(${(1 - g) * getH / 2 - v * getCentre}px)`;
+    column.style.transform = `translateY(${v >= 1 ? -getCentre : getH / 2}px)`;
     document.getElementById('about').style.pointerEvents = g > 0.5 ? 'auto' : 'none';
-    // phase 5 (0.86 → 0.98): the footer condenses in from the bottom
-    const f = ease((p - 0.86) / 0.12);
+    // 0.90 → 0.99: the footer condenses in from the bottom
+    const f = ease((p - 0.90) / 0.09);
     footer.style.opacity = String(f);
     footer.style.transform = `translateY(${(1 - f) * 40}px)`;
     footer.style.filter = `blur(${(1 - f) * 10}px)`;

@@ -70,8 +70,12 @@ order prior + affinity to the profile. A meaning chosen before for the same term
 first again. Slash-joined terms ("RTS/ITS") are looked up whole and per part.
 
 ## History and collections (menu bar)
-- History grouped by day, with the source app and time; search; sort by Recent, A–Z,
-  Most looked up.
+- History grouped by Today, Yesterday, This week, This month, then by month; older months
+  start folded and a long group shows 20 terms with "Show all". Each row has the source app
+  and the time (the date further back). Search; sort by Recent, A–Z, Most looked up.
+- Archive: a term looked up once, never saved or collected, and not seen in 30 days moves to
+  a folded Archive at the bottom of History. Nothing is deleted; search still finds it, and
+  looking it up again brings it back.
 - Saved = terms with a saved meaning (or starred in History).
 - Collections have no colour. They hold meanings, not just words: the star next to a
   meaning in the popover files that meaning into one or more collections, or a new one.

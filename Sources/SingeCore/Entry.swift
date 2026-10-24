@@ -143,14 +143,16 @@ public func singeMain() -> Int32 {
     }
 
     // Singe --menu-demo: open the menu bar panel under a fake icon, capture it, then open
-    // the first collection and capture again (/tmp/singe-menu-*.png).
+    // the first collection and capture again (/tmp/singe-menu-*.png). --history captures the
+    // History tab instead; --offscreen keeps the panel below the screen, out of your way.
     if args.contains("--menu-demo") {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         let store = Store(), state = AppState()
         state.trusted = true
         let panel = MenuPanel(content: MenuView(store: store, app: state, onExport: {}, onQuit: {},
-                                                startTab: args.contains("--apps") ? .apps : .lists))
+                                                startTab: args.contains("--apps") ? .apps
+                                                    : args.contains("--history") ? .history : .lists))
         func capture(_ name: String) {
             if let shot = CGWindowListCreateImage(.null, .optionIncludingWindow, CGWindowID(panel.windowNumber),
                                                   [.boundsIgnoreFraming, .bestResolution]) {
@@ -160,9 +162,11 @@ public func singeMain() -> Int32 {
         }
         DispatchQueue.main.async {
             let s = NSScreen.main!.frame
-            panel.show(under: CGRect(x: s.midX, y: s.maxY - 30, width: 24, height: 22), on: NSScreen.main)
+            let y = args.contains("--offscreen") ? s.minY - 2000 : s.maxY - 30
+            panel.show(under: CGRect(x: s.midX, y: y, width: 24, height: 22), on: NSScreen.main)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            if args.contains("--history") { capture("history"); exit(0) }
             capture("lists")
             NotificationCenter.default.post(name: MenuView.openFirstForDemo, object: nil)
         }

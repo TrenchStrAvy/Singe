@@ -19,6 +19,8 @@ struct MenuView: View {
     @State private var search = ""
     @State private var openList: Int?          // the collection open in the Collections tab
     @State private var expanded: String?
+    @State private var flipped: Set<String> = []   // groups opened or closed against their default
+    @State private var showAll: Set<String> = []   // long groups shown in full
     @State private var hovered: String?
     @State private var newListName = ""
     @Namespace private var tabs
@@ -148,10 +150,18 @@ struct MenuView: View {
         .padding(.horizontal, 18).padding(.bottom, 4)
     }
 
+    private var query: String { search.trimmingCharacters(in: .whitespaces).lowercased() }
+
+    /// Looked up once, never saved, not seen in 30 days: kept and still found by search, but
+    /// moved out of the list into the Archive at the bottom.
+    static func isArchived(_ r: TermRecord, now: Date = Date()) -> Bool {
+        r.count == 1 && !r.starred && r.lists.isEmpty && now.timeIntervalSince(r.lastSeen) > 30 * 86_400
+    }
+
     private var filtered: [TermRecord] {
         var items = store.records
         if tab == .saved { items = items.filter(\.starred) }
-        let q = search.trimmingCharacters(in: .whitespaces).lowercased()
+        let q = query
         if !q.isEmpty {
             items = items.filter { $0.term.lowercased().contains(q) || $0.meaning.lowercased().contains(q) || $0.gloss.lowercased().contains(q) }
         }
@@ -164,24 +174,66 @@ struct MenuView: View {
     }
 
     @ViewBuilder private var records: some View {
-        let items = filtered
-        if items.isEmpty {
+        let all = filtered
+        // while searching, everything that matches shows, the archive included
+        let archived = tab == .history && query.isEmpty ? all.filter { Self.isArchived($0) } : []
+        let items = archived.isEmpty ? all : all.filter { !Self.isArchived($0) }
+        if all.isEmpty {
             emptyNote(store.records.isEmpty
                       ? "Nothing Singed yet. Highlight a term anywhere and hold Left ⌃."
                       : tab == .saved ? "Nothing saved yet. Click the star next to a meaning in the popover." : "No terms match.")
-        } else if sort == .recent {
-            ForEach(groups(items), id: \.0) { title, group in
-                sectionTitle(title)
-                ForEach(group) { row($0) }
-            }
         } else {
-            ForEach(items) { row($0) }
+            if sort == .recent {
+                ForEach(groups(items), id: \.0) { title, group in
+                    section(title, group, openByDefault: !Self.foldedByDefault(title))
+                }
+            } else {
+                capped("all", items)
+            }
+            if !archived.isEmpty {
+                section("Archive", archived, openByDefault: false)
+            }
         }
     }
 
-    private func sectionTitle(_ title: String) -> some View {
-        Text(title.uppercased()).font(.system(size: 10.5, weight: .semibold)).tracking(0.4).foregroundStyle(muted)
-            .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+    /// Recent groups start open; whole months and the archive start folded.
+    private static let openGroups: Set<String> = ["Today", "Yesterday", "This week", "This month"]
+    static func foldedByDefault(_ title: String) -> Bool { !openGroups.contains(title) }
+
+    @ViewBuilder private func section(_ title: String, _ group: [TermRecord], openByDefault: Bool) -> some View {
+        let open = !query.isEmpty || openByDefault != flipped.contains(title)
+        sectionTitle(title, count: group.count, open: open) {
+            withAnimation(PopoverView.flow) {
+                if flipped.contains(title) { flipped.remove(title) } else { flipped.insert(title) }
+            }
+        }
+        if open { capped(title, group) }
+    }
+
+    /// A long group shows its first 20 terms, then a button for the rest.
+    @ViewBuilder private func capped(_ id: String, _ group: [TermRecord]) -> some View {
+        let limit = 20
+        let full = showAll.contains(id) || group.count <= limit + 5
+        ForEach(full ? group : Array(group.prefix(limit))) { row($0) }
+        if !full {
+            Button("Show all \(group.count)") { withAnimation(PopoverView.flow) { _ = showAll.insert(id) } }
+                .buttonStyle(.plain).font(.system(size: 11.5, weight: .medium)).foregroundStyle(soft)
+                .padding(.horizontal, 10).padding(.vertical, 6)
+        }
+    }
+
+    private func sectionTitle(_ title: String, count: Int, open: Bool, toggle: @escaping () -> Void) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold))
+                .rotationEffect(.degrees(open ? 90 : 0))
+            Text(title.uppercased()).tracking(0.4)
+            Text("\(count)").fontWeight(.regular).opacity(0.75)
+            Spacer()
+        }
+        .font(.system(size: 10.5, weight: .semibold)).foregroundStyle(muted)
+        .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+        .contentShape(Rectangle())
+        .onTapGesture(perform: toggle)
     }
 
     private func emptyNote(_ text: String) -> some View {
@@ -190,13 +242,23 @@ struct MenuView: View {
             .padding(.horizontal, 10).padding(.vertical, 12)
     }
 
-    private func groups(_ items: [TermRecord]) -> [(String, [TermRecord])] {
-        let cal = Calendar.current
+    /// Today, Yesterday, This week, This month, then one group per month, so the list keeps
+    /// a handful of headings however long the history gets.
+    static func groupTitle(_ d: Date, now: Date = Date(), cal: Calendar = .current) -> String {
+        if cal.isDate(d, inSameDayAs: now) { return "Today" }
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: now)).day ?? 0
+        if days == 1 { return "Yesterday" }
+        if days < 7 { return "This week" }
+        if cal.isDate(d, equalTo: now, toGranularity: .month) { return "This month" }
         let fmt = DateFormatter()
-        fmt.dateFormat = "EEEE d MMM"
+        fmt.setLocalizedDateFormatFromTemplate(cal.isDate(d, equalTo: now, toGranularity: .year) ? "MMMM" : "MMMM yyyy")
+        return fmt.string(from: d)
+    }
+
+    private func groups(_ items: [TermRecord]) -> [(String, [TermRecord])] {
         var out: [(String, [TermRecord])] = []
         for r in items {
-            let title = cal.isDateInToday(r.lastSeen) ? "Today" : cal.isDateInYesterday(r.lastSeen) ? "Yesterday" : fmt.string(from: r.lastSeen)
+            let title = Self.groupTitle(r.lastSeen)
             if out.last?.0 == title { out[out.count - 1].1.append(r) } else { out.append((title, [r])) }
         }
         return out
@@ -217,7 +279,10 @@ struct MenuView: View {
     }
 
     private func row(_ r: TermRecord) -> some View {
-        let time = DateFormatter.localizedString(from: r.lastSeen, dateStyle: .none, timeStyle: .short)
+        // the time of day for today and yesterday, the date further back
+        let recent = Calendar.current.isDateInToday(r.lastSeen) || Calendar.current.isDateInYesterday(r.lastSeen)
+        let time = recent ? DateFormatter.localizedString(from: r.lastSeen, dateStyle: .none, timeStyle: .short)
+            : r.lastSeen.formatted(.dateTime.day().month(.abbreviated))
         let on = expanded == r.key
         return VStack(alignment: .leading, spacing: 3) {
             HStack(spacing: 9) {
